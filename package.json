@@ -6,17 +6,48 @@
   "main": "src/main.js",
   "private": true,
   "scripts": {
+    "start": "electron .",
     "test": "node --test",
     "test:roundtrip": "node --test test/roundtrip.test.js",
     "test:edits": "node --test test/edits.test.js",
     "test:storage": "node --test test/storage.test.js",
-    "start": "node src/main.js"
+    "test:templates": "node --test test/templates.test.js",
+    "test:workspace": "node --test test/workspace.test.js",
+    "test:e2e-agent": "node --test test/e2e-agent.test.js",
+    "dist": "electron-builder"
   },
   "engines": {
     "node": ">=22.19"
   },
   "dependencies": {
+    "@earendil-works/pi-coding-agent": "^0.83.0",
+    "docx-preview": "^0.4.0",
     "fast-xml-parser": "^5.10.1",
     "pizzip": "^3.2.0"
+  },
+  "build": {
+    "appId": "com.paiban.studio",
+    "productName": "排版工作台",
+    "directories": {
+      "output": "out"
+    },
+    "files": [
+      "src/**",
+      "public/**",
+      "templates/**",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "mac": {
+      "target": "dmg"
+    },
+    "linux": {
+      "target": "AppImage"
+    }
+  },
+  "devDependencies": {
+    "electron": "^35.7.5"
   }
 }

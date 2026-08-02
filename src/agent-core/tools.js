@@ -1,0 +1,147 @@
+// agent-core/tools.js — 自研 agent 工具（spec 模块 2）。
+//
+// 三工具（+ 结构 dump 工具）全部收敛到 Workspace 服务层：
+//   doc_outline    文档结构 dump（dump → batch 往返的 dump 端，D6）
+//   doc_edit       编辑命令批（走唯一 seam applyEdits + 自动快照）
+//   template_read  模板规则集 / 占位符 / 大纲读取
+//   version_store  版本列表 / 回滚
+//
+// 参数 schema 用纯 JSON Schema 对象（与 typebox 产出的 TSchema 运行时同构）。
+// 所有写工具 executionMode: 'sequential'（R1：串行执行，防并发写同一文档）。
+// 内置文件工具（read/bash/edit/write）不入白名单——agent 只能经这些工具改文档。
+
+const COMMANDS_SCHEMA = {
+  type: 'array',
+  description: '编辑命令数组，按顺序原子应用。协议：{command:"set",path,props}|{command:"set",match:{text},props}|{command:"add",parent,node,position}|{command:"remove",path}|{command:"move",path,parent}|{command:"findReplace",find,replace}|{command:"normalize",ruleset}|{command:"numbering",action,...}|{command:"pageNumber",action:"footer"}',
+  items: { type: 'object', additionalProperties: true },
+};
+
+export function createTools(workspace) {
+  return [
+    {
+      name: 'doc_outline',
+      label: 'Document Outline',
+      description: '获取 docx 文档结构大纲：段落路径（/body/p[N]）、文本预览、样式/大纲级/编号标记、节页面设置。编辑前先调用它定位目标路径。',
+      promptSnippet: 'Dump the structure of a Word document (paragraph paths for addressing)',
+      promptGuidelines: [
+        '编辑文档前先调用 doc_outline 获取段落路径，再用 doc_edit 按路径精确修改。',
+        '路径形如 /body/p[1]/r[2]（1 起，按同标签兄弟计数）。',
+      ],
+      parameters: {
+        type: 'object',
+        properties: {
+          docId: { type: 'string', description: '工作文档 ID' },
+          textPreview: { type: 'number', description: '段落文本预览长度，默认 60' },
+        },
+        required: ['docId'],
+      },
+      executionMode: 'sequential',
+      async execute(_id, params) {
+        const outline = workspace.getOutline(params.docId, { textPreview: params.textPreview });
+        return jsonResult(outline);
+      },
+    },
+    {
+      name: 'doc_edit',
+      label: 'Document Edit',
+      description: '对 docx 应用一批编辑命令（唯一编辑通道）。每次成功编辑自动生成新版本，可回滚。命令按数组顺序应用；失败命令返回结构化错误（含自愈建议），不中断后续命令。',
+      promptSnippet: 'Edit Word documents via batch commands (the ONLY write path)',
+      promptGuidelines: [
+        '禁止直接读写 .docx 文件；一切文档修改必须走 doc_edit。',
+        'set 命令：段落 /body/p[N]（props: align/lineSpacingPt/firstLineChars/spacingBeforePt/pageBreakBefore/outlineLevel）；run /body/p[N]/r[M]（props: eastAsia/ascii/sizePt/bold/italic/underline/color）；节 /body/sectPr（props: marginsCm/pageSize/orientation/pageNumFmt）。',
+        '批量统一格式用 {command:"set",match:{text:"正则"},props:{run:{...}}} 命中全部匹配段落。',
+        '全文规范化用 normalize + 模板规则集（template_read 可获取规则集并直接复用其命令）。',
+        '中文公文字号：三号=16pt 小三=15pt 四号=14pt 小四=12pt 五号=10.5pt；正文行距常用 28 磅（lineSpacingPt:28）；首行缩进 2 字符（firstLineChars:200）。',
+      ],
+      parameters: {
+        type: 'object',
+        properties: {
+          docId: { type: 'string' },
+          commands: COMMANDS_SCHEMA,
+          note: { type: 'string', description: '本次修改的人类可读摘要（记入版本链）' },
+        },
+        required: ['docId', 'commands'],
+      },
+      executionMode: 'sequential',
+      async execute(_id, params) {
+        if (!Array.isArray(params.commands) || !params.commands.length) {
+          return jsonResult({ error: 'commands 必须是非空数组' }, true);
+        }
+        const r = workspace.applyCommands(params.docId, params.commands, {
+          source: 'agent', note: params.note,
+        });
+        return jsonResult({
+          applied: r.applied,
+          errors: r.errors,
+          version: r.version,
+          versionCreated: r.versionCreated,
+          selfCheck: r.selfCheck,
+        }, r.errors.length > 0);
+      },
+    },
+    {
+      name: 'template_read',
+      label: 'Template Read',
+      description: '读取模板资产：不传 templateId 时列出全部模板；传入时返回该模板的规则集（识别/样式）、占位符清单、结构大纲，以及可直接用于 doc_edit 的规则集命令（rulesetCommands）。',
+      promptSnippet: 'Read formatting templates and their rulesets',
+      promptGuidelines: [
+        '用户说"按某模板排"时：template_read 取 rulesetCommands，原样传给 doc_edit 的 commands。',
+      ],
+      parameters: {
+        type: 'object',
+        properties: {
+          templateId: { type: 'string', description: '模板 ID；省略则列出全部模板' },
+        },
+      },
+      executionMode: 'sequential',
+      async execute(_id, params) {
+        if (!params.templateId) {
+          return jsonResult({ templates: workspace.listTemplates() });
+        }
+        const t = workspace.readTemplate(params.templateId);
+        return jsonResult({
+          meta: t.meta,
+          placeholders: t.placeholders,
+          outline: t.outline,
+          recognizers: t.recognizers,
+          styles: t.styles,
+          rulesetCommands: workspace.templateRulesetCommands(params.templateId),
+        });
+      },
+    },
+    {
+      name: 'version_store',
+      label: 'Version Store',
+      description: '文档版本链：列出历史版本（含每版摘要），或回滚到指定版本（回滚本身记录为新版本）。',
+      promptSnippet: 'List and roll back document versions',
+      parameters: {
+        type: 'object',
+        properties: {
+          action: { type: 'string', enum: ['list', 'rollback'], description: 'list=列版本；rollback=回滚' },
+          docId: { type: 'string' },
+          versionId: { type: 'string', description: 'rollback 目标版本（如 v3）' },
+        },
+        required: ['action', 'docId'],
+      },
+      executionMode: 'sequential',
+      async execute(_id, params) {
+        if (params.action === 'list') {
+          return jsonResult({ versions: workspace.listVersions(params.docId) });
+        }
+        if (params.action === 'rollback') {
+          if (!params.versionId) return jsonResult({ error: 'rollback 需要 versionId' }, true);
+          return jsonResult(workspace.rollback(params.docId, params.versionId));
+        }
+        return jsonResult({ error: `未知 action: ${params.action}` }, true);
+      },
+    },
+  ];
+}
+
+function jsonResult(data, isError = false) {
+  return {
+    content: [{ type: 'text', text: JSON.stringify(data, null, 2) }],
+    details: data,
+    isError,
+  };
+}

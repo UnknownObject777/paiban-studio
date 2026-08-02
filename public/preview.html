@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<!-- preview.html — 预览 iframe：docx-preview.renderAsync 渲染（D4）。
+     父页面 postMessage({type:'render', buffer}) 传入 ArrayBuffer，防抖在父页面做。 -->
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<style>
+  html, body { margin: 0; padding: 0; background: #fff; }
+  #container { padding: 8px; }
+  #status { font: 12px sans-serif; color: rgba(0,0,0,.5); padding: 16px; text-align: center; }
+  .docx-wrapper { background: #fff !important; }
+</style>
+</head>
+<body>
+<div id="status">等待文档…</div>
+<div id="container"></div>
+<script src="vendor/jszip.min.js"></script>
+<script src="vendor/docx-preview.min.js"></script>
+<script>
+  const container = document.getElementById('container');
+  const status = document.getElementById('status');
+
+  window.addEventListener('message', async (ev) => {
+    const data = ev.data || {};
+    if (data.type !== 'render' || !data.buffer) return;
+    status.style.display = 'none';
+    container.innerHTML = '';
+    try {
+      await docx.renderAsync(data.buffer, container, null, {
+        className: 'docx',
+        inWrapper: true,
+        ignoreWidth: false,
+        ignoreHeight: false,
+        breakPages: true,
+        renderHeaders: true,
+        renderFooters: true,
+        renderFootnotes: true,
+        renderEndnotes: true,
+      });
+      // 渲染冒烟信号回传父页面（DOM 非空 = 冒烟通过）
+      parent.postMessage({ type: 'rendered', ok: container.childElementCount > 0 }, '*');
+    } catch (err) {
+      status.style.display = 'block';
+      status.textContent = '预览渲染失败：' + err.message;
+      parent.postMessage({ type: 'rendered', ok: false, error: err.message }, '*');
+    }
+  });
+  parent.postMessage({ type: 'preview-ready' }, '*');
+</script>
+</body>
+</html>
