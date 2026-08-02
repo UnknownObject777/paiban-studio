@@ -64,7 +64,7 @@ export class AgentBridge {
     }
 
     const usingGateway = !!cfg.baseUrl;
-    const providerId = usingGateway ? 'paiban-gateway' : (cfg.provider || 'anthropic');
+    const providerId = usingGateway ? 'paiban-gateway' : (cfg.provider || 'deepseek');
 
     // OpenAI 兼容端点：写 models.json（apiKey 经环境变量插值，不落明文到 models.json）
     let modelsPath = null;
