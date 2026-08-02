@@ -43,6 +43,7 @@
 | `packaging/release-notes-v2.7.5.md`、`v2.7.6.md` | 面向中文办公用户的发版说明写法 | 后续发版沟通格式参考 |
 | `wfp_version.py` | 版本号集中单点定义模式 | 沿用此模式（新库为 package.json version） |
 | `screenshot.png`、`demo_word_before_after.png`、`demo_txt_before_after.png` | 排版前后对比演示图 | 产品页/README/模板画廊素材；新产品出 demo 后替换 |
+| `open-design/`（sparse-clone） | open-design 设计系统库 | Figma design system 规范已快照迁入 `docs/design/figma/DESIGN.md`；如需其他设计系统再从源仓库 sparse-checkout |
 
 ## 五、明确废弃（决策已定，不要再翻）
 

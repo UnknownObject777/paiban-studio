@@ -158,3 +158,39 @@ OfficeCLI 定位是「工具」，不是「智能体」。agent 循环在仓库�
    - 样式：<https://github.com/iOfficeAI/OfficeCLI/wiki/word-style>
    - i18n/RTL：<https://github.com/iOfficeAI/OfficeCLI/wiki/i18n>
 10. 配套 agent 应用（证明 agent 循环在仓库外）：<https://github.com/iOfficeAI/AionUi>
+
+---
+
+## 6. 本地参考副本（`reference/OfficeCLI`）
+
+- 位置：`reference/OfficeCLI`（项目内，供 coding agent 直接查阅一手源码）
+- 拉取方式：浅克隆 `git clone --depth 1 --single-branch`，无 submodule
+- 拉取日期：2026-08-02
+- 快照 HEAD：`b2f30dd`（`fix(xlsx): time-only text coerces to a time-of-day fraction, not today's date`）
+- 副本体积：约 169M（含 `.git`）
+- 用途：本文第 1–4 节的结论基于 GitHub API + Wiki 远程调研；本地副本供 agent 在实现期逐行核对一手源码（属性词汇表、batch/dump 协议、错误码、OOXML 处理细节），不替代本文结论。
+
+### 关键路径速查（相对 `reference/OfficeCLI`）
+
+| 路径 | 内容 |
+|---|---|
+| `SKILL.md` | 官方技能文件（约 26KB）：教 agent 安装二进制 + 全部命令用法 |
+| `src/officecli/` | C# 核心（.NET 10），全部实现 |
+| `src/officecli/Handlers/Word/` | Word 命令适配层（按动词拆分 partial class：`Add.*` / `Set.*` / `Query.cs` / `Navigation.cs` / `Mutations.cs`） |
+| `src/officecli/Core/` | 底层：`RawXmlHelper`（XPath 逃生舱）、`SchemaOrder`（OOXML 元素顺序约束）、`HtmlScreenshot`、`CompoundFile` |
+| `src/officecli/McpServer.cs` | 内置 MCP 服务器（stdio JSON-RPC 2.0，单工具暴露） |
+| `sdk/node/`、`sdk/python/` | 命名管道薄客户端（`{command, path, props}` 协议） |
+| `schemas/` | 批量命令 JSON schema |
+| `plugins/` | 官方插件 |
+| `examples/` | 示例 |
+
+### 更新方式
+
+```bash
+git -C reference/OfficeCLI pull --ff-only
+```
+
+### 注意事项
+
+- 该副本仅作参考，**不提交**到 paiban-studio 仓库（`.gitignore` 已排除 `reference/`）。
+- 副本保持浅克隆（depth 1）；如需查历史可 `git fetch --unshallow`。

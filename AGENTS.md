@@ -31,7 +31,7 @@ Single-context layout: one `CONTEXT.md` at the repo root + `docs/adr/`. See `doc
 
 本项目前端在生成、重构或新增界面时，遵循 open-design 的 **Figma design system** 审美规范。
 
-权威规范原文：`open-design/plugins/_official/design-systems/figma/DESIGN.md`（当前 sparse-clone 在旧库 UnknownObject777/Word-Formatter-Pro 的 `open-design/` 目录，动手前先读全文；建议在本库重新 sparse-clone 一份）。
+权威规范原文：`docs/design/figma/DESIGN.md`（已迁入本库，**动手前先读全文**；源自 open-design `plugins/_official/design-systems/figma/DESIGN.md`，2026-08-02 快照）。
 
 ### 核心风格速查
 

@@ -17,6 +17,8 @@ MVP 规格已确认（2026-08-02），处于实现前的原型阶段。当前 fr
 | `docs/research/` | 三份调研报告：OfficeCLI 借鉴范式、pi agent 接入、OOXML 编辑层与预览选型 |
 | `docs/knowledge/wfp-formatting-rules.md` | wfp_core 排版识别规则知识提取（模板规则集的知识来源） |
 | `docs/legacy-assets.md` | 旧库资产盘点：可复用代码/借鉴范式/知识资产/废弃清单（逐文件级） |
+| `reference/OfficeCLI` | OfficeCLI 本地浅克隆副本（一手源码，agent 实现期参考用；`.gitignore` 排除，不进仓库） |
+| `docs/design/figma/DESIGN.md` | Figma design system 完整规范（前端审美唯一权威，open-design 快照） |
 | `AGENTS.md` | agent 工作约定：卡片实现工作流（worktree 强制）、Figma design system 审美规范 |
 
 ## 技术决策速览
