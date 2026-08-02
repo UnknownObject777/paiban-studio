@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;">
+<title>排版工作台 paiban-studio</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="app">
+  <!-- 顶栏 -->
+  <header id="topbar">
+    <div class="brand">排版工作台</div>
+    <div class="safety-hint" id="safety-hint" title="所有修改只作用于工作副本，原始文件不会被改动">只处理副本 · 原稿不动 · 全程本地</div>
+    <div class="spacer"></div>
+    <div id="model-status" class="model-status pill">模型检测中…</div>
+    <button id="btn-settings" class="btn pill ghost">模型设置</button>
+  </header>
+
+  <div id="columns">
+    <!-- 左栏：模板库 / 工作文档 -->
+    <aside id="left">
+      <section class="panel">
+        <div class="panel-head">
+          <h2>模板库</h2>
+          <button id="btn-upload-template" class="btn pill small">上传模板</button>
+        </div>
+        <ul id="template-list" class="item-list empty-hint" data-empty="还没有模板，上传单位范本即可沉淀为资产"></ul>
+      </section>
+      <section class="panel grow">
+        <div class="panel-head">
+          <h2>工作文档</h2>
+          <button id="btn-open-doc" class="btn pill small solid">打开 docx</button>
+        </div>
+        <ul id="doc-list" class="item-list empty-hint" data-empty="打开一篇排版混乱的 docx 开始"></ul>
+      </section>
+    </aside>
+
+    <!-- 中栏：对话流 -->
+    <main id="center">
+      <div id="chat-stream" class="chat-stream">
+        <div class="chat-empty" id="chat-empty">
+          <p class="big">用自然语言指挥 AI 排版</p>
+          <p class="dim">「标题改成黑体三号居中」 · 「正文统一仿宋四号、行距 28 磅」 · 「按《通知》模板的样式排」</p>
+        </div>
+      </div>
+      <form id="chat-form">
+        <input id="chat-input" type="text" placeholder="对当前文档说点什么…（先打开一篇文档）" autocomplete="off">
+        <button type="submit" class="btn pill solid" id="btn-send">发送</button>
+        <button type="button" class="btn pill ghost hidden" id="btn-abort">停止</button>
+      </form>
+    </main>
+
+    <!-- 右栏：预览 + 版本时间线 -->
+    <aside id="right">
+      <section class="panel preview-panel">
+        <div class="panel-head">
+          <h2>实时预览</h2>
+          <button id="btn-download" class="btn pill small" disabled>下载 docx</button>
+        </div>
+        <div id="preview-wrap">
+          <div id="preview-placeholder" class="dim">打开文档后此处实时渲染排版效果</div>
+          <iframe id="preview-frame" src="preview.html" title="文档预览" class="hidden"></iframe>
+        </div>
+      </section>
+      <section class="panel versions-panel">
+        <div class="panel-head"><h2>版本时间线</h2></div>
+        <ul id="version-list" class="item-list empty-hint" data-empty="每次修改自动存版本，可随时回滚"></ul>
+      </section>
+    </aside>
+  </div>
+</div>
+
+<!-- 模板详情 / 实例化对话框 -->
+<dialog id="template-dialog" class="modal">
+  <h3 id="template-dialog-title">模板</h3>
+  <div id="template-dialog-body"></div>
+  <div class="modal-actions">
+    <button class="btn pill ghost" data-close>关闭</button>
+    <button class="btn pill solid" id="btn-instantiate">实例化为新文档</button>
+  </div>
+</dialog>
+
+<!-- 模型设置对话框 -->
+<dialog id="settings-dialog" class="modal">
+  <h3>模型设置</h3>
+  <div class="form-grid">
+    <label>Provider
+      <select id="cfg-provider">
+        <option value="anthropic">Anthropic</option>
+        <option value="openai">OpenAI</option>
+        <option value="deepseek">DeepSeek</option>
+        <option value="gateway">OpenAI 兼容网关（Ollama / vLLM / One-API…）</option>
+      </select>
+    </label>
+    <label>模型 ID <input id="cfg-model" type="text" placeholder="claude-sonnet-4-5 / deepseek-chat / qwen3…"></label>
+    <label>Base URL（网关时必填）<input id="cfg-baseurl" type="text" placeholder="http://localhost:11434/v1"></label>
+    <label>API Key <input id="cfg-apikey" type="password" placeholder="留空则用环境变量"></label>
+  </div>
+  <div class="modal-actions">
+    <button class="btn pill ghost" data-close>取消</button>
+    <button class="btn pill solid" id="btn-save-config">保存（重载 agent 生效）</button>
+  </div>
+</dialog>
+
+<script src="app.js"></script>
+</body>
+</html>

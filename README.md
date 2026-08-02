@@ -19,10 +19,16 @@ npm run preview   # 组件画廊预览页 → http://localhost:4173/preview/rule
 
 ## 状态
 
-MVP 规格已确认（2026-08-02），处于实现前的原型阶段。当前 frontier：
+MVP 已实现（2026-08-02，issue #2）：round-trip 保真 spike、docx 编辑内核（唯一 seam `applyEdits`）、存储版本链、模板层（两文件规则集 + 占位符 + 实例化）、Electron 骨架 + 三栏前端 + docx-preview 实时预览、pi agent 接入层（四自研工具 + mock LLM 全链路测试）。37 个 node:test 用例（36 通过 / 1 个真实 LLM e2e 默认跳过，`PAIBAN_E2E=1` 启用）。
 
-- 模板规则集原型（识别/样式两文件 schema + 组件画廊预览页）
-- round-trip 保真 spike（真实 Word/WPS 文档 → 解析 → 序列化 → 重新打包 → 双端无损，MVP 第一里程碑）
+```bash
+npm install        # Electron 二进制下载失败时设 ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/
+npm test           # 全部测试
+npm start          # 启动 Electron 应用
+PAIBAN_SMOKE=1 npm start   # headless 冒烟（无显示环境）
+```
+
+发布前人工门禁（spec）：Word 与 WPS 双端打开编辑产物验证版式一致。
 
 ## 文档
 
