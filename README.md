@@ -16,6 +16,7 @@ MVP 规格已确认（2026-08-02），处于实现前的原型阶段。当前 fr
 | `docs/mvp-spec.md` | MVP 实现边界报告：Problem/Solution/User Stories/全部拍板决策（D1–D9 + R1–R4）/模块接口/测试策略 |
 | `docs/research/` | 三份调研报告：OfficeCLI 借鉴范式、pi agent 接入、OOXML 编辑层与预览选型 |
 | `docs/knowledge/wfp-formatting-rules.md` | wfp_core 排版识别规则知识提取（模板规则集的知识来源） |
+| `docs/legacy-assets.md` | 旧库资产盘点：可复用代码/借鉴范式/知识资产/废弃清单（逐文件级） |
 | `AGENTS.md` | agent 工作约定：卡片实现工作流（worktree 强制）、Figma design system 审美规范 |
 
 ## 技术决策速览
