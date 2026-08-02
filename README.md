@@ -2,6 +2,21 @@
 
 **AI 驱动的 Office 排版本地工作台（Word MVP）**——上传排版混乱的 docx + 选/传模板 → 用自然语言指挥 AI 直接修改文档 → 秒级实时预览 → 每次改动自动存版本、可回滚。全程本地运行，公文不出内网。
 
+## 快速开始
+
+```bash
+npm test          # 规则集 schema 校验测试（node:test，零依赖）
+npm run preview   # 组件画廊预览页 → http://localhost:4173/preview/ruleset-gallery.html
+```
+
+## 模板规则集原型（issue #1）
+
+- `src/ruleset/components.js` — 排版组件清单常量（title / subtitle / heading1..4 / body / caption / table / attachment + page），两文件一致性的兜底基准
+- `src/ruleset/schema.js` — 两文件 schema 校验器（Node 与浏览器共用）
+- `src/ruleset/load.js` — 规则集目录加载器（读 + 校验，不合法即抛错）
+- `templates/rulesets/gongwen-default/` — 内置公文默认规则集：`recognizers.json`（component id → match 规则）+ `styles.json`（component id → style + page），翻自 `docs/knowledge/wfp-formatting-rules.md`
+- `preview/ruleset-gallery.html` — 静态预览页：组件画廊（真实字体字号行距渲染样例文字）+ 页面线框（边距/页脚距/奇偶页页码示意）
+
 ## 状态
 
 MVP 规格已确认（2026-08-02），处于实现前的原型阶段。当前 frontier：

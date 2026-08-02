@@ -1,0 +1,333 @@
+/* 规则集预览页样式 —— 遵循 docs/design/figma/DESIGN.md：
+   界面 chrome 严格黑白；pill / 圆形几何；8px 间距基数；负字距排版；
+   虚线 focus 指示；不加彩色强调色。 */
+
+* {
+  box-sizing: border-box;
+}
+
+:root {
+  --black: #000000;
+  --white: #ffffff;
+  --glass-black: rgba(0, 0, 0, 0.08);
+  --hairline: rgba(0, 0, 0, 0.16);
+}
+
+html {
+  font-family: figmaSans, "figmaSans Fallback", "SF Pro Display", system-ui,
+    "PingFang SC", "Microsoft YaHei", helvetica, sans-serif;
+  font-feature-settings: "kern";
+  color: var(--black);
+  background: var(--white);
+}
+
+body {
+  margin: 0;
+  letter-spacing: -0.14px;
+  line-height: 1.45;
+}
+
+.mono-label {
+  font-family: figmaMono, "figmaMono Fallback", "SF Mono", menlo, monospace;
+  font-size: 12px;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+}
+
+/* ---------- 顶栏 ---------- */
+
+.topbar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 32px;
+  padding: 40px 48px 24px;
+  border-bottom: 1px solid var(--black);
+}
+
+.topbar h1 {
+  margin: 8px 0 0;
+  font-size: 48px;
+  font-weight: 450;
+  line-height: 1.1;
+  letter-spacing: -0.96px;
+}
+
+.topbar__tabs {
+  display: flex;
+  gap: 8px;
+}
+
+.tab,
+.pill {
+  appearance: none;
+  border: 1px solid var(--black);
+  background: var(--white);
+  color: var(--black);
+  border-radius: 50px;
+  padding: 8px 18px 10px;
+  font: inherit;
+  font-size: 16px;
+  letter-spacing: -0.14px;
+  cursor: pointer;
+}
+
+.tab.is-active,
+.pill.is-active {
+  background: var(--black);
+  color: var(--white);
+}
+
+.tab:focus-visible,
+.pill:focus-visible,
+button:focus-visible {
+  outline: 2px dashed var(--black);
+  outline-offset: 2px;
+}
+
+/* ---------- 主体 ---------- */
+
+main {
+  padding: 32px 48px 64px;
+  max-width: 1280px;
+}
+
+.status {
+  font-size: 18px;
+  font-weight: 340;
+  letter-spacing: -0.26px;
+}
+
+.status--error {
+  border: 1px solid var(--black);
+  border-radius: 8px;
+  padding: 16px 24px;
+  white-space: pre-wrap;
+}
+
+.is-hidden {
+  display: none;
+}
+
+/* ---------- 组件画廊 ---------- */
+
+.gallery {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 24px;
+}
+
+.card {
+  border: 1px solid var(--black);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.card__head {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--black);
+}
+
+.card__name {
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.card__id {
+  color: var(--black);
+  opacity: 0.64;
+}
+
+.card__rules {
+  margin-left: auto;
+  font-size: 12px;
+  max-width: 46ch;
+}
+
+.card__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+}
+
+.card__sample {
+  padding: 24px;
+  background: var(--white);
+}
+
+.card__meta {
+  border-left: 1px solid var(--hairline);
+  padding: 16px 24px;
+  font-size: 12px;
+}
+
+.card__meta dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+}
+
+.card__meta dt {
+  font-family: figmaMono, "SF Mono", menlo, monospace;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  opacity: 0.64;
+}
+
+.card__meta dd {
+  margin: 0;
+  font-weight: 450;
+}
+
+.card__notes {
+  grid-column: 1 / -1;
+  margin-top: 8px;
+  font-weight: 340;
+  opacity: 0.8;
+}
+
+.card__badge {
+  display: inline-block;
+  border: 1px solid var(--black);
+  border-radius: 50px;
+  padding: 2px 12px 4px;
+  font-size: 12px;
+  font-family: figmaMono, "SF Mono", menlo, monospace;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+}
+
+/* 画廊样例行：真实字体字号行距由 JS 内联样式注入 */
+.sample-line {
+  margin: 0;
+}
+
+.sample-table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.sample-table th,
+.sample-table td {
+  border: 1px solid var(--black);
+  padding: 4px 12px;
+}
+
+@media (max-width: 960px) {
+  .topbar {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 24px;
+  }
+
+  main {
+    padding: 24px;
+  }
+
+  .card__body {
+    grid-template-columns: 1fr;
+  }
+
+  .card__meta {
+    border-left: none;
+    border-top: 1px solid var(--hairline);
+  }
+}
+
+/* ---------- 页面线框 ---------- */
+
+.page-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+.pill-group {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.pill-note {
+  font-size: 12px;
+  font-weight: 340;
+  opacity: 0.72;
+}
+
+.wireframe-wrap {
+  display: flex;
+  gap: 48px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.wireframe {
+  position: relative;
+  border: 1px solid var(--black);
+  border-radius: 6px;
+  background: var(--white);
+  /* 尺寸由 JS 按 A4 比例注入 */
+}
+
+.wf-margins {
+  position: absolute;
+  border: 1px dashed var(--black);
+}
+
+.wf-footer-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1px solid var(--hairline);
+}
+
+.wf-pageno {
+  position: absolute;
+  display: inline-block;
+  border: 1px solid var(--black);
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  line-height: 32px;
+  text-align: center;
+  background: var(--white);
+}
+
+.wf-dim {
+  position: absolute;
+  font-size: 12px;
+  font-family: figmaMono, "SF Mono", menlo, monospace;
+  letter-spacing: 0.6px;
+  white-space: nowrap;
+}
+
+.wf-textzone {
+  position: absolute;
+  background: var(--glass-black);
+  border-radius: 6px;
+}
+
+.page-facts {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-width: 420px;
+}
+
+.page-facts li {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--hairline);
+  font-size: 16px;
+  font-weight: 340;
+}
+
+.page-facts li b {
+  font-weight: 540;
+}

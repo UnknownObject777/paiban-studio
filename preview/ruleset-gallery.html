@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>规则集预览 · paiban-studio</title>
+    <link rel="stylesheet" href="./gallery.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="topbar__title">
+        <span class="mono-label">RULESET PREVIEW</span>
+        <h1 id="ruleset-name">规则集预览</h1>
+      </div>
+      <nav class="topbar__tabs" aria-label="视图切换">
+        <button class="tab is-active" data-view="gallery" type="button">组件画廊</button>
+        <button class="tab" data-view="page" type="button">页面线框</button>
+      </nav>
+    </header>
+
+    <main>
+      <p id="status" class="status" role="status">正在加载规则集…</p>
+
+      <section id="view-gallery" class="view" aria-label="组件画廊">
+        <div id="gallery" class="gallery"></div>
+      </section>
+
+      <section id="view-page" class="view is-hidden" aria-label="页面线框">
+        <div class="page-toolbar">
+          <div class="pill-group" role="group" aria-label="奇偶页">
+            <button class="pill is-active" data-parity="odd" type="button">奇数页</button>
+            <button class="pill" data-parity="even" type="button">偶数页</button>
+          </div>
+          <span id="paper-note" class="pill-note"></span>
+        </div>
+        <div class="wireframe-wrap">
+          <div id="wireframe" class="wireframe"></div>
+          <ul id="page-facts" class="page-facts"></ul>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="./gallery.js"></script>
+  </body>
+</html>

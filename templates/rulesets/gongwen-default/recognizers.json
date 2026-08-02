@@ -1,0 +1,109 @@
+{
+  "ruleset": "gongwen-default",
+  "version": 1,
+  "description": "内置公文默认规则集 · 识别规则（component id → match 规则），翻自 docs/knowledge/wfp-formatting-rules.md",
+  "components": {
+    "title": {
+      "match": [
+        {
+          "type": "position",
+          "where": "documentStart",
+          "params": { "maxParagraphs": 5 },
+          "notes": "文档开头若干段落内寻找；TXT/MD 取首个非层级标题段落"
+        },
+        {
+          "type": "heuristic",
+          "kind": "consecutiveCenteredUniformFont",
+          "notes": "连续居中且字体字号一致的段落判为题目"
+        }
+      ]
+    },
+    "subtitle": {
+      "match": [
+        {
+          "type": "position",
+          "where": "afterComponent",
+          "params": { "component": "title", "within": 2 },
+          "notes": "题目下方"
+        },
+        {
+          "type": "heuristic",
+          "kind": "centeredDifferentFont",
+          "notes": "居中且字体字号与题目不同的段落判为副标题"
+        }
+      ]
+    },
+    "heading1": {
+      "match": [
+        {
+          "type": "regex",
+          "pattern": "^[一二三四五六七八九十百]+、",
+          "notes": "一、 二、 等"
+        }
+      ]
+    },
+    "heading2": {
+      "match": [
+        {
+          "type": "regex",
+          "pattern": "^（[一二三四五六七八九十]+）",
+          "notes": "（一）（二）等；与正文同段以句号分隔时尝试段内拆分"
+        }
+      ]
+    },
+    "heading3": {
+      "match": [
+        {
+          "type": "regex",
+          "pattern": "^\\d+[.．]",
+          "notes": "1. 2. 1． 等"
+        }
+      ]
+    },
+    "heading4": {
+      "match": [
+        {
+          "type": "regex",
+          "pattern": "^[（(]\\d+[）)]",
+          "notes": "（1）(1) 等"
+        }
+      ]
+    },
+    "body": {
+      "fallback": true,
+      "notes": "未被以上规则命中的普通段落一律视为正文"
+    },
+    "caption": {
+      "match": [
+        {
+          "type": "regex",
+          "pattern": "^(图|表)\\s*\\d+",
+          "notes": "图… 表… 起始的段落"
+        },
+        {
+          "type": "heuristic",
+          "kind": "centeredAdjacentToFigureOrTable",
+          "notes": "位于图片或表格上下相邻位置的居中段落"
+        }
+      ]
+    },
+    "table": {
+      "match": [
+        {
+          "type": "heuristic",
+          "kind": "isTableElement",
+          "notes": "OOXML 表格元素本身，无需文本规则"
+        }
+      ]
+    },
+    "attachment": {
+      "match": [
+        {
+          "type": "regex",
+          "pattern": "^附件\\s*\\d*\\s*[:：]?",
+          "notes": "附件 / 附件1 / 附件： 等形式；标识后继续识别附件题目与副标题"
+        }
+      ]
+    }
+  }
+}
