@@ -1,0 +1,114 @@
+{
+  "ruleset": "gongwen-default",
+  "version": 1,
+  "description": "内置公文默认规则集 · 样式与页面（component id → style + page），字号/行距单位 pt，尺寸单位 cm",
+  "components": {
+    "title": {
+      "fontEastAsia": "方正小标宋简体",
+      "fontAscii": "Times New Roman",
+      "sizePt": 22,
+      "bold": false,
+      "align": "center",
+      "lineSpacingPt": 33,
+      "firstLineIndentChars": 0,
+      "notes": "题目行距 33 磅"
+    },
+    "subtitle": {
+      "fontEastAsia": "楷体_GB2312",
+      "fontAscii": "Times New Roman",
+      "sizePt": 16,
+      "align": "center",
+      "lineSpacingPt": 33,
+      "firstLineIndentChars": 0,
+      "notes": "副标题行距 33 磅"
+    },
+    "heading1": {
+      "fontEastAsia": "黑体",
+      "fontAscii": "Times New Roman",
+      "sizePt": 16,
+      "align": "left",
+      "lineSpacingPt": 28,
+      "firstLineIndentChars": 2,
+      "outlineLevel": 1,
+      "notes": "一、 级标题；与正文一样先清理残留缩进再设标准首行缩进"
+    },
+    "heading2": {
+      "fontEastAsia": "楷体_GB2312",
+      "fontAscii": "Times New Roman",
+      "sizePt": 16,
+      "align": "left",
+      "lineSpacingPt": 28,
+      "firstLineIndentChars": 2,
+      "outlineLevel": 2,
+      "notes": "（一）级标题；段内拆分时仅标题部分用本样式"
+    },
+    "heading3": {
+      "fontEastAsia": "仿宋_GB2312",
+      "fontAscii": "Times New Roman",
+      "sizePt": 16,
+      "align": "left",
+      "lineSpacingPt": 28,
+      "firstLineIndentChars": 2,
+      "outlineLevel": 3,
+      "notes": "1. 级标题"
+    },
+    "heading4": {
+      "fontEastAsia": "仿宋_GB2312",
+      "fontAscii": "Times New Roman",
+      "sizePt": 16,
+      "align": "left",
+      "lineSpacingPt": 28,
+      "firstLineIndentChars": 2,
+      "outlineLevel": 4,
+      "notes": "（1）级标题"
+    },
+    "body": {
+      "fontEastAsia": "仿宋_GB2312",
+      "fontAscii": "Times New Roman",
+      "sizePt": 16,
+      "align": "justify",
+      "lineSpacingPt": 28,
+      "firstLineIndentChars": 2,
+      "notes": "正文行距 28 磅；含图片/嵌入对象的段落只处理文字格式、保留行距"
+    },
+    "caption": {
+      "fontEastAsia": "黑体",
+      "fontAscii": "Times New Roman",
+      "sizePt": 16,
+      "align": "center",
+      "lineSpacingPt": 28,
+      "firstLineIndentChars": 0,
+      "notes": "规则文档未规定图表题字体，暂取黑体居中（待评审确认）"
+    },
+    "table": {
+      "fontEastAsia": "仿宋_GB2312",
+      "fontAscii": "Times New Roman",
+      "sizePt": 14,
+      "smartAlign": false,
+      "notes": "内容自动调整默认关闭；智能对齐启用后表头/合计/序号/短文本居中、数字右对齐"
+    },
+    "attachment": {
+      "fontEastAsia": "黑体",
+      "fontAscii": "Times New Roman",
+      "sizePt": 16,
+      "align": "left",
+      "lineSpacingPt": 28,
+      "firstLineIndentChars": 0,
+      "pageBreakBefore": true,
+      "notes": "附件标识段前分页"
+    }
+  },
+  "page": {
+    "paper": "preserve",
+    "margins": { "topCm": 3.7, "bottomCm": 3.5, "leftCm": 2.8, "rightCm": 2.6 },
+    "footerDistanceCm": 2.5,
+    "pageNumber": {
+      "oddEven": true,
+      "oddAlign": "right",
+      "evenAlign": "left",
+      "fontEastAsia": "宋体",
+      "sizePt": 14
+    },
+    "notes": "paper=preserve 对应 force_a4=false：Word/WPS 文档保留原纸张，TXT/MD 默认 A4；预览线框按 A4 渲染"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "name": "paiban-studio",
+  "version": "0.1.0",
+  "description": "AI 驱动的 Office 排版本地工作台（Word MVP）——对话式 AI 直接修改 docx + 实时预览 + 版本链，本地优先",
+  "type": "module",
+  "main": "src/main.js",
+  "private": true,
+  "scripts": {
+    "test": "node --test",
+    "test:roundtrip": "node --test test/roundtrip.test.js",
+    "test:edits": "node --test test/edits.test.js",
+    "test:storage": "node --test test/storage.test.js",
+    "start": "node src/main.js"
+  },
+  "engines": {
+    "node": ">=22.19"
+  },
+  "dependencies": {
+    "fast-xml-parser": "^5.10.1",
+    "pizzip": "^3.2.0"
+  }
+}
