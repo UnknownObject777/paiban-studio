@@ -17,8 +17,8 @@ import { applyEdits } from '../docx-core/applyEdits.js';
 import { dumpOutline } from '../docx-core/outline.js';
 
 const DEFAULT_CONFIG = {
-  provider: 'anthropic',
-  model: 'claude-sonnet-4-5',
+  provider: 'deepseek',
+  model: 'deepseek-v4-flash',
   baseUrl: '',
   apiKey: '',
 };
@@ -113,7 +113,7 @@ export class Workspace {
       provider: process.env.PAIBAN_PROVIDER,
       model: process.env.PAIBAN_MODEL,
       baseUrl: process.env.PAIBAN_BASE_URL,
-      apiKey: process.env.PAIBAN_API_KEY || process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY,
+      apiKey: process.env.PAIBAN_API_KEY || process.env.ANTHROPIC_API_KEY || process.env.DEEPSEEK_API_KEY || process.env.OPENAI_API_KEY,
     };
     const cfg = { ...DEFAULT_CONFIG };
     for (const src of [envCfg, fileCfg]) {
@@ -132,7 +132,7 @@ export class Workspace {
       try { fileCfg = JSON.parse(readFileSync(this.configPath, 'utf8')); } catch { /* ignore */ }
     }
     const apiKey = fileCfg.apiKey || process.env.PAIBAN_API_KEY
-      || process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY || '';
+      || process.env.ANTHROPIC_API_KEY || process.env.DEEPSEEK_API_KEY || process.env.OPENAI_API_KEY || '';
     return { ...pub, apiKey };
   }
 

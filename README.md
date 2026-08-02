@@ -65,16 +65,16 @@ npm test           # 全量测试
 
 ### 配置 LLM Provider
 
-配置优先级：**界面配置 > 环境变量 > 默认值**（`src/server/workspace.js`，R4）。默认值：`anthropic / claude-sonnet-4-5`。
+配置优先级：**界面配置 > 环境变量 > 默认值**（`src/server/workspace.js`，R4）。默认值：`deepseek / deepseek-v4-flash`（凭证回落 `DEEPSEEK_API_KEY`）。
 
 **方式一 · 环境变量**（适合 CI / 内网脚本）：
 
 | 变量 | 说明 |
 |---|---|
 | `PAIBAN_PROVIDER` | `anthropic` \| `openai` \| `deepseek` \| `gateway`（OpenAI 兼容网关） |
-| `PAIBAN_MODEL` | 模型 ID，如 `claude-sonnet-4-5` / `deepseek-chat` / `qwen3` |
+| `PAIBAN_MODEL` | 模型 ID，如 `deepseek-v4-flash` / `deepseek-v4-pro` / `claude-sonnet-4-5` |
 | `PAIBAN_BASE_URL` | 网关必填，如 `http://localhost:11434/v1`（Ollama）、vLLM、One-API |
-| `PAIBAN_API_KEY` | 凭证（亦回落 `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`） |
+| `PAIBAN_API_KEY` | 凭证（亦回落 `DEEPSEEK_API_KEY` / `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`） |
 
 **方式二 · 界面配置**：顶栏「模型设置」对话框，保存到 `<userData>/paiban-studio/config.json`，保存后重载 agent 生效。
 
@@ -120,6 +120,8 @@ npm run dist       # electron-builder，输出到 out/
 ### 真实 LLM 链路测试
 
 ```bash
+# DeepSeek（默认 provider）
+PAIBAN_E2E=1 DEEPSEEK_API_KEY=sk-... npm run test:e2e-agent
 # Anthropic 直连
 PAIBAN_E2E=1 ANTHROPIC_API_KEY=sk-... npm run test:e2e-agent
 # OpenAI 兼容网关

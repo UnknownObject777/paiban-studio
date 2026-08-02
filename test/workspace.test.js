@@ -97,8 +97,9 @@ test('配置优先级：界面配置 > 环境变量 > 默认值（R4），凭证
   const { ws, cleanup } = freshWorkspace();
   // 默认值
   let cfg = ws.getConfig();
-  assert.equal(cfg.provider, 'anthropic');
-  const envHasKey = !!(process.env.PAIBAN_API_KEY || process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY);
+  assert.equal(cfg.provider, 'deepseek');
+  assert.equal(cfg.model, 'deepseek-v4-flash');
+  const envHasKey = !!(process.env.PAIBAN_API_KEY || process.env.ANTHROPIC_API_KEY || process.env.DEEPSEEK_API_KEY || process.env.OPENAI_API_KEY);
   assert.equal(cfg.hasApiKey, envHasKey);
   // 界面配置覆盖
   ws.setConfig({ provider: 'openai', model: 'qwen3-max', baseUrl: 'http://localhost:11434/v1', apiKey: 'sk-secret' });

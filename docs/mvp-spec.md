@@ -82,7 +82,7 @@
 
 **R3 · 仓库身份（回答 #8，已拍板）**：**新建独立仓库 paiban-studio，从头建库**——新产品与旧 Word-Formatter-Pro 几乎无关，不沿用 fork。旧库转为 wfp_core 知识资产与决策档案的只读存放地；研究报告/spec/设计规范随迁本库；wfp_core 以文档化提取形式进入（不带 git history、不用 submodule），识别规则知识见 `docs/knowledge/wfp-formatting-rules.md`。
 
-**R4 · LLM provider 策略**：MVP 默认支持 Anthropic + OpenAI 兼容端点（覆盖 DeepSeek/Kimi/Qwen/本地 Ollama/vLLM），复用 workbench 的配置优先级（界面配置 > 环境变量 > 默认值）；凭证存本地配置文件。
+**R4 · LLM provider 策略**：MVP 默认支持 Anthropic + OpenAI 兼容端点（覆盖 DeepSeek/Kimi/Qwen/本地 Ollama/vLLM），复用 workbench 的配置优先级（界面配置 > 环境变量 > 默认值）；凭证存本地配置文件。**默认 `deepseek / deepseek-v4-flash`**（走 pi 内置 DeepSeek provider，`DEEPSEEK_API_KEY` 认证）。
 
 ### 模块与接口
 
