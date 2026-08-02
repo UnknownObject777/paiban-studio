@@ -52,3 +52,5 @@ Single-context layout: one `CONTEXT.md` at the repo root + `docs/adr/`. See `doc
 - 按钮、tab、输入框、头像等交互元素使用 pill / 圆形几何
 - 保持 8px 间距体系与负字距排版；页面标题级别使用大号紧排（86px / 64px / 48px）
 - 断点：<560 / 560-768 / 768-960 / 960-1280 / 1280-1440 / 1440-1920px，窄屏收拢为单列
+
+&nbsp;
