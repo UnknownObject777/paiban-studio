@@ -1,4 +1,4 @@
-// docx-core/model.js — 文档模型访问层：路径寻址 + 结构遍历。
+// docx-core/model.ts — 文档模型访问层：路径寻址 + 结构遍历。
 //
 // 路径语法（借鉴 OfficeCLI 路径寻址，D6）：
 //   /body/p[1]            document.xml 中 w:body 下第 1 个 w:p（1 起，按同 tag 兄弟计数）
@@ -10,23 +10,40 @@
 
 import { tagOf, isElement, childrenOf, findChild, textOf } from './ooxml.js';
 import { getXmlTree } from './docx.js';
+import type { XmlNode } from './xml.js';
+import type { Docx } from './docx.js';
 
-const W = (t) => (t.includes(':') ? t : 'w:' + t);
+const W = (t: string): string => (t.includes(':') ? t : 'w:' + t);
 
 export class PathError extends Error {
-  constructor(message, suggestion) {
+  code: string;
+  suggestion?: string;
+  constructor(message: string, suggestion?: string) {
     super(message);
+    this.name = 'PathError';
     this.code = 'PATH_NOT_FOUND';
     this.suggestion = suggestion;
   }
 }
 
+/** 路径段：tag 为规范后的 w:xxx；index 为 1 起序号或 'last'。 */
+export interface PathSegment {
+  tag: string;
+  index: number | 'last';
+}
+
+export interface ResolvedPath {
+  node: XmlNode;
+  parent: XmlNode | null;
+  segments: PathSegment[];
+}
+
 // 解析路径字符串 → [{ tag, index }]（index 1 起；省略等同 [1]；'last' 表示末尾）。
-export function parsePath(path) {
+export function parsePath(path: string): PathSegment[] {
   if (typeof path !== 'string' || !path.startsWith('/')) {
     throw new PathError(`路径必须以 / 开头: ${JSON.stringify(path)}`, '示例: /body/p[1]/r[2]');
   }
-  const segs = [];
+  const segs: PathSegment[] = [];
   for (const raw of path.split('/').filter(Boolean)) {
     const m = /^([\w:.-]+?)(?:\[(\d+|last)\])?$/.exec(raw);
     if (!m) throw new PathError(`无法解析路径段: ${raw}`, '形如 p[1] / r[2] / sectPr');
@@ -37,17 +54,17 @@ export function parsePath(path) {
 }
 
 // 在 children 数组中取第 index 个 tag 元素（1 起；'last' 取末尾）。
-function nthOfTag(children, tag, index) {
+function nthOfTag(children: XmlNode[], tag: string, index: number | 'last'): XmlNode | undefined {
   const matches = children.filter((c) => isElement(c, tag));
   if (index === 'last') return matches[matches.length - 1];
   return matches[index - 1];
 }
 
 /**
- * 解析路径 → { node, parent, parentChildren, indexInParent, segments }
- * rootTag 为树根元素 tag（默认在 document.xml 的 w:document 下寻址）。
+ * 解析路径 → { node, parent, segments }
+ * partName 默认在 document.xml 下寻址。
  */
-export function resolvePath(docx, path, partName = 'word/document.xml') {
+export function resolvePath(docx: Docx, path: string, partName = 'word/document.xml'): ResolvedPath {
   const tree = getXmlTree(docx, partName);
   if (!tree) throw new PathError(`部件不存在: ${partName}`);
   const segments = parsePath(path);
@@ -60,13 +77,13 @@ export function resolvePath(docx, path, partName = 'word/document.xml') {
   if (rootEl && tagOf(rootEl) !== segments[0].tag) {
     children = childrenOf(rootEl);
   }
-  let node = null;
-  let parent = null;
+  let node: XmlNode | null = null;
+  let parent: XmlNode | null = null;
   for (let i = 0; i < segments.length; i++) {
     const { tag, index } = segments[i];
     const found = nthOfTag(children, tag, index);
     if (!found) {
-      const available = [...new Set(children.map(tagOf).filter(Boolean))].join(', ');
+      const available = [...new Set(children.map(tagOf).filter((x): x is string => Boolean(x)))].join(', ');
       throw new PathError(
         `路径 ${path} 在第 ${i + 1} 段未找到 ${tag}[${index}]`,
         `该层可用元素: ${available || '(无)'}`,
@@ -76,20 +93,20 @@ export function resolvePath(docx, path, partName = 'word/document.xml') {
     node = found;
     children = childrenOf(node);
   }
-  return { node, parent, segments };
+  return { node: node!, parent, segments };
 }
 
 // ---- 结构遍历 ----
 
-export function getBodyNode(docx) {
+export function getBodyNode(docx: Docx): XmlNode {
   return resolvePath(docx, '/body').node;
 }
 
 // 深度遍历 body，枚举所有段落（含表格单元格内段落），回调 (pNode, path)。
-export function walkParagraphs(docx, fn) {
+export function walkParagraphs(docx: Docx, fn: (p: XmlNode, path: string) => void): void {
   const body = getBodyNode(docx);
-  const walk = (node, path) => {
-    const counters = new Map(); // tag -> 序号
+  const walk = (node: XmlNode, path: string): void => {
+    const counters = new Map<string, number>(); // tag -> 序号
     for (const child of childrenOf(node)) {
       const tag = tagOf(child);
       if (!tag) continue;
@@ -104,7 +121,7 @@ export function walkParagraphs(docx, fn) {
 }
 
 // 枚举所有 sectPr（body 末尾的 + 段落内嵌的分节符），回调 (sectPr, path)。
-export function walkSections(docx, fn) {
+export function walkSections(docx: Docx, fn: (sectPr: XmlNode, path: string) => void): number {
   const body = getBodyNode(docx);
   const direct = findChild(body, 'w:sectPr');
   let paraCount = 0;
@@ -118,6 +135,6 @@ export function walkSections(docx, fn) {
 }
 
 // 段落拼接纯文本（所有 w:t）。
-export function paragraphText(pNode) {
+export function paragraphText(pNode: XmlNode): string {
   return textOf(pNode);
 }

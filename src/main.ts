@@ -1,4 +1,4 @@
-// main.js — Electron 主进程（R1：主进程跑 agent 编排 + docx 编辑内核 + 存储层；IPC 通信）。
+// main.ts — Electron 主进程（R1：主进程跑 agent 编排 + docx 编辑内核 + 存储层；IPC 通信）。
 //
 // 职责：
 //   1. 创建 BrowserWindow（三栏工作台 UI，public/index.html）
@@ -12,18 +12,20 @@ import { fileURLToPath } from 'node:url';
 import { Workspace } from './server/workspace.js';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
+// 编译产物位于 dist/src/，项目根在其上两级（public/index.html、templates/ 等均位于项目根）。
+const ROOT = join(__dirname, '../..');
 const SMOKE = process.env.PAIBAN_SMOKE === '1';
 
-let workspace;
-let agentBridge = null;
+let workspace: Workspace;
+let agentBridge: any = null;
 
-function dataDir() {
+function dataDir(): string {
   return join(app.getPath('userData'), 'paiban-studio');
 }
 
 // ---- IPC：工作台 ----
 
-function registerWorkbenchIpc() {
+function registerWorkbenchIpc(): void {
   const W = () => workspace;
 
   ipcMain.handle('workbench:uploadDocument', async (_e, { name, bytes }) => {
@@ -41,7 +43,7 @@ function registerWorkbenchIpc() {
     if (r.canceled || !r.filePaths.length) return null;
     const path = r.filePaths[0];
     const buffer = readFileSync(path);
-    const name = path.split(/[\\/]/).pop();
+    const name = path.split(/[\\/]/).pop() ?? 'document.docx';
     return { ...W().uploadDocument(buffer, name), sourcePath: path };
   });
 
@@ -77,7 +79,7 @@ function registerWorkbenchIpc() {
     });
     if (r.canceled || !r.filePaths.length) return null;
     const path = r.filePaths[0];
-    const name = path.split(/[\\/]/).pop().replace(/\.docx$/i, '');
+    const name = (path.split(/[\\/]/).pop() ?? '').replace(/\.docx$/i, '');
     return W().uploadTemplate(readFileSync(path), name);
   });
   ipcMain.handle('workbench:listTemplates', () => W().listTemplates());
@@ -99,14 +101,14 @@ function registerWorkbenchIpc() {
 }
 
 // agent 事件 → 渲染层广播
-function wireAgentEvents(win) {
+function wireAgentEvents(win: BrowserWindow): void {
   if (!agentBridge) return;
-  agentBridge.onEvent((event) => {
+  agentBridge.onEvent((event: unknown) => {
     if (!win.isDestroyed()) win.webContents.send('agent:event', event);
   });
 }
 
-async function createWindow() {
+async function createWindow(): Promise<void> {
   const win = new BrowserWindow({
     width: 1440,
     height: 900,
@@ -123,19 +125,19 @@ async function createWindow() {
     show: !SMOKE,
   });
   win.removeMenu();
-  await win.loadFile(join(__dirname, '../public/index.html'));
+  await win.loadFile(join(ROOT, 'public/index.html'));
   wireAgentEvents(win);
 }
 
 // headless 冒烟：PAIBAN_SMOKE=1 时执行 service 级全链路并退出（CI/无显示环境用）
-async function runSmoke() {
-  const results = { steps: [], ok: true };
-  const step = (name, fn) => {
+async function runSmoke(): Promise<void> {
+  const results: { steps: Array<Record<string, unknown>>; ok: boolean } = { steps: [], ok: true };
+  const step = (name: string, fn: () => unknown): void => {
     try {
       const r = fn();
       results.steps.push({ name, ok: true, detail: r });
     } catch (err) {
-      results.steps.push({ name, ok: false, error: err.message });
+      results.steps.push({ name, ok: false, error: (err as Error).message });
       results.ok = false;
     }
   };
@@ -149,7 +151,7 @@ async function runSmoke() {
   zip.file('word/_rels/document.xml.rels', DECL + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>');
   const buf = zip.generate({ type: 'nodebuffer' });
 
-  let docId;
+  let docId: string;
   step('uploadDocument', () => { docId = workspace.uploadDocument(buf, 'smoke.docx').docId; return docId; });
   step('applyCommands', () => {
     const r = workspace.applyCommands(docId, [{ command: 'set', path: '/body/p[1]', props: { align: 'center', run: { eastAsia: '黑体', sizePt: 16 } } }]);
@@ -173,7 +175,7 @@ app.whenReady().then(async () => {
     agentBridge = new AgentBridge(workspace);
     await agentBridge.init();
   } catch (err) {
-    console.error('[agent] 初始化失败（降级为无 agent 模式）:', err.message);
+    console.error('[agent] 初始化失败（降级为无 agent 模式）:', (err as Error).message);
     agentBridge = null;
   }
   registerWorkbenchIpc();

@@ -3,19 +3,21 @@
   "version": "0.1.0",
   "description": "AI 驱动的 Office 排版本地工作台（Word MVP）——对话式 AI 直接修改 docx + 实时预览 + 版本链，本地优先",
   "type": "module",
-  "main": "src/main.js",
+  "main": "dist/src/main.js",
   "private": true,
   "scripts": {
-    "start": "electron .",
-    "test": "node --test",
-    "test:roundtrip": "node --test test/roundtrip.test.js",
-    "test:edits": "node --test test/edits.test.js",
-    "test:storage": "node --test test/storage.test.js",
-    "test:templates": "node --test test/templates.test.js",
-    "test:workspace": "node --test test/workspace.test.js",
-    "test:e2e-agent": "node --test test/e2e-agent.test.js",
-    "dist": "electron-builder",
-    "preview": "node preview/serve.mjs"
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "start": "npm run build && electron .",
+    "test": "npm run build && node --test dist/test/",
+    "test:roundtrip": "npm run build && node --test dist/test/roundtrip.test.js",
+    "test:edits": "npm run build && node --test dist/test/edits.test.js",
+    "test:storage": "npm run build && node --test dist/test/storage.test.js",
+    "test:templates": "npm run build && node --test dist/test/templates.test.js",
+    "test:workspace": "npm run build && node --test dist/test/workspace.test.js",
+    "test:e2e-agent": "npm run build && node --test dist/test/e2e-agent.test.js",
+    "dist": "npm run build && electron-builder",
+    "preview": "npm run build && node dist/preview/serve.js"
   },
   "engines": {
     "node": ">=22.19"
@@ -33,7 +35,7 @@
       "output": "out"
     },
     "files": [
-      "src/**",
+      "dist/**",
       "public/**",
       "templates/**",
       "package.json"
@@ -49,6 +51,9 @@
     }
   },
   "devDependencies": {
-    "electron": "^43.2.0"
+    "@types/node": "^26.1.2",
+    "@types/pizzip": "^3.0.5",
+    "electron": "^43.2.0",
+    "typescript": "^7.0.2"
   }
 }

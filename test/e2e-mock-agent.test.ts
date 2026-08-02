@@ -10,6 +10,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import PizZip from 'pizzip';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -22,7 +23,7 @@ import { findChild, findChildren, getAttr, isElement } from '../src/docx-core/oo
 const DECL = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n';
 
 function makeDocx() {
-  const p = (t) => `<w:p><w:r><w:t xml:space="preserve">${t}</w:t></w:r></w:p>`;
+  const p = (t: string) => `<w:p><w:r><w:t xml:space="preserve">${t}</w:t></w:r></w:p>`;
   const zip = new PizZip();
   zip.file('[Content_Types].xml', DECL + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>');
   zip.file('_rels/.rels', DECL + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>');
@@ -34,11 +35,11 @@ function makeDocx() {
 }
 
 // 判断请求是否为流式
-function wantsStream(body) {
+function wantsStream(body: string): boolean {
   try { return JSON.parse(body).stream === true; } catch { return false; }
 }
 
-function sse(chunks) {
+function sse(chunks: unknown[]): string {
   return chunks.map((c) => `data: ${JSON.stringify(c)}\n\n`).join('') + 'data: [DONE]\n\n';
 }
 
@@ -98,8 +99,9 @@ async function startMockLlm() {
       }
     });
   });
-  await new Promise((r) => server.listen(0, '127.0.0.1', r));
-  return { server, port: server.address().port, getCalls: () => calls };
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
+  const addr = server.address() as AddressInfo;
+  return { server, port: addr.port, getCalls: () => calls };
 }
 
 test('mock LLM 全链路：doc_edit 工具 → 文档实际变化 + 新版本 + 事件流', { timeout: 120000 }, async () => {
@@ -118,8 +120,8 @@ test('mock LLM 全链路：doc_edit 工具 → 文档实际变化 + 新版本 + 
     assert.equal(bridge.status().ready, true, `agent 未就绪: ${bridge.status().reason}`);
 
     // 收集事件
-    const events = [];
-    bridge.onEvent((e) => events.push(e));
+    const events: Array<{ type: string; [k: string]: any }> = [];
+    bridge.onEvent((e) => events.push(e as { type: string; [k: string]: any }));
 
     const r = await bridge.send(docId, '把第一段标题改成黑体三号居中。');
     assert.equal(r.ok, true);
@@ -129,7 +131,7 @@ test('mock LLM 全链路：doc_edit 工具 → 文档实际变化 + 新版本 + 
     assert.ok(versions.length >= 2, '应产生新版本');
     assert.equal(versions[versions.length - 1].note, '标题黑体三号居中');
     const doc = openDocx(ws.getDocumentBuffer(docId));
-    const docEl = doc.parts.get('word/document.xml').tree.find((n) => isElement(n, 'w:document'));
+    const docEl = doc.parts.get('word/document.xml')!.tree!.find((n) => isElement(n, 'w:document'));
     const body = findChild(docEl, 'w:body');
     const p1 = findChildren(body, 'w:p')[0];
     assert.equal(getAttr(findChild(findChild(p1, 'w:pPr'), 'w:jc'), 'w:val'), 'center');
@@ -142,7 +144,7 @@ test('mock LLM 全链路：doc_edit 工具 → 文档实际变化 + 新版本 + 
     assert.ok(types.includes('tool_start'), `缺 tool_start: ${types}`);
     assert.ok(types.includes('tool_end'), `缺 tool_end: ${types}`);
     assert.ok(types.includes('done'), `缺 done: ${types}`);
-    const toolStart = events.find((e) => e.type === 'tool_start');
+    const toolStart = events.find((e) => e.type === 'tool_start')!;
     assert.equal(toolStart.name, 'doc_edit');
   } finally {
     mock.server.close();

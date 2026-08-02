@@ -1,4 +1,4 @@
-// edits.test.js — docx 编辑内核 MVP 原语的 buffer→buffer 外部行为测试。
+// edits.test.ts — docx 编辑内核 MVP 原语的 buffer→buffer 外部行为测试。
 //
 // 原则（spec 测试策略）：只测 seam 外部行为 —— applyEdits(buffer, commands) 的产物
 // 重新打开后断言 OOXML 语义；不 inspect 内部文档模型。覆盖：
@@ -12,20 +12,22 @@ import { applyEdits } from '../src/docx-core/applyEdits.js';
 import { openDocx } from '../src/docx-core/docx.js';
 import { findChild, findChildren, getAttr, childrenOf, isElement, tagOf } from '../src/docx-core/ooxml.js';
 import { dumpOutline } from '../src/docx-core/outline.js';
+import type { Docx } from '../src/docx-core/docx.js';
+import type { XmlNode } from '../src/docx-core/xml.js';
 
 // ---- 最小合法 docx 工厂（精确的初始结构，便于断言） ----
 
 const DECL = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n';
 const W_NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"';
 
-function para(text, { split = false, pPr = '' } = {}) {
+function para(text: string | string[], { split = false, pPr = '' }: { split?: boolean; pPr?: string } = {}): string {
   const runs = split
-    ? text.map((t) => `<w:r><w:t xml:space="preserve">${t}</w:t></w:r>`).join('')
+    ? (text as string[]).map((t) => `<w:r><w:t xml:space="preserve">${t}</w:t></w:r>`).join('')
     : `<w:r><w:t xml:space="preserve">${text}</w:t></w:r>`;
   return `<w:p>${pPr}${runs}</w:p>`;
 }
 
-function makeDocx(bodyInner, { withRels = true } = {}) {
+function makeDocx(bodyInner: string, { withRels = true }: { withRels?: boolean } = {}): Buffer {
   const zip = new PizZip();
   zip.file('[Content_Types].xml', DECL +
     '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
@@ -47,16 +49,16 @@ function makeDocx(bodyInner, { withRels = true } = {}) {
 }
 
 // 重新打开产物并取 document.xml 树
-function reopen(buffer) {
+function reopen(buffer: Buffer): Docx {
   return openDocx(buffer);
 }
-function docBody(docx) {
-  const tree = docx.parts.get('word/document.xml').tree;
-  const doc = tree.find((n) => isElement(n, 'w:document'));
-  return findChild(doc, 'w:body');
+function docBody(docx: Docx): XmlNode {
+  const tree = docx.parts.get('word/document.xml')!.tree!;
+  const doc = tree.find((n) => isElement(n, 'w:document'))!;
+  return findChild(doc, 'w:body')!;
 }
-function pAt(docx, n) {
-  return findChildren(docBody(docx), 'w:p')[n - 1];
+function pAt(docx: Docx, n: number): XmlNode {
+  return findChildren(docBody(docx), 'w:p')[n - 1]!;
 }
 
 test('set 段落对齐：/body/p[1] jc=center，其余部件原样', () => {
@@ -109,7 +111,7 @@ test('schema 顺序：已有 jc 的段落补 spacing，spacing 必须排在 jc �
   ]);
   const doc = reopen(buffer);
   const pPr = findChild(pAt(doc, 1), 'w:pPr');
-  const tags = childrenOf(pPr).map(tagOf).filter(Boolean);
+  const tags = childrenOf(pPr).map(tagOf).filter((x): x is string => Boolean(x));
   assert.ok(tags.indexOf('w:spacing') < tags.indexOf('w:jc'), `顺序错误: ${tags}`);
 });
 
@@ -152,7 +154,7 @@ test('findReplace 跨 run：拆分 run 也能命中替换', () => {
   assert.equal(result.applied[0].detail.replaced, 1);
   const doc = reopen(buffer);
   const texts = findChildren(pAt(doc, 1), 'w:r')
-    .map((r) => childrenOf(findChild(r, 'w:t')).map((x) => x['#text'] || '').join(''));
+    .map((r) => childrenOf(findChild(r, 'w:t')!).map((x) => x['#text'] || '').join(''));
   assert.equal(texts.join(''), '正X范');
 });
 
@@ -176,10 +178,10 @@ test('add / remove / move 结构原语', () => {
   const r3 = applyEdits(r2.buffer, [{ command: 'move', path: '/body/p[1]', parent: '/body' }]);
   doc = reopen(r3.buffer);
   paras = findChildren(docBody(doc), 'w:p');
-  const textOfP = (p) => childrenOf(findChild(findChild(p, 'w:r'), 'w:t')).map((x) => x['#text']).join('');
-  assert.equal(textOfP(paras[0]), 'C');
-  assert.equal(textOfP(paras[1]), 'D');
-  assert.equal(textOfP(paras[2]), 'A');
+  const textOfP = (p: XmlNode) => childrenOf(findChild(findChild(p, 'w:r'), 'w:t')!).map((x) => x['#text']).join('');
+  assert.equal(textOfP(paras[0]!), 'C');
+  assert.equal(textOfP(paras[1]!), 'D');
+  assert.equal(textOfP(paras[2]!), 'A');
 });
 
 test('numbering：定义多级编号（幂等）并挂载段落', () => {
@@ -197,8 +199,8 @@ test('numbering：定义多级编号（幂等）并挂载段落', () => {
   const numId = r1.result.applied[0].detail.numId;
   const doc = reopen(r1.buffer);
   // numbering.xml 部件存在且结构合法
-  const numTree = doc.parts.get('word/numbering.xml').tree;
-  const numRoot = numTree.find((n) => isElement(n, 'w:numbering'));
+  const numTree = doc.parts.get('word/numbering.xml')!.tree!;
+  const numRoot = numTree.find((n) => isElement(n, 'w:numbering'))!;
   assert.ok(numRoot);
   assert.equal(findChildren(numRoot, 'w:abstractNum').length, 1);
   assert.equal(findChildren(numRoot, 'w:num').length, 1);
@@ -210,11 +212,11 @@ test('numbering：定义多级编号（幂等）并挂载段落', () => {
   const r2 = applyEdits(r1.buffer, [{ command: 'numbering', action: 'define', levels }]);
   assert.equal(r2.result.applied[0].detail.numId, numId);
   const doc2 = reopen(r2.buffer);
-  const numRoot2 = doc2.parts.get('word/numbering.xml').tree.find((n) => isElement(n, 'w:numbering'));
+  const numRoot2 = doc2.parts.get('word/numbering.xml')!.tree!.find((n) => isElement(n, 'w:numbering'))!;
   assert.equal(findChildren(numRoot2, 'w:abstractNum').length, 1);
   // content-types / rels 已注册
-  const ct = doc2.parts.get('[Content_Types].xml').text || '';
-  assert.ok(ct.includes('numbering+xml') || reopen(r2.buffer).parts.get('[Content_Types].xml').dirty);
+  const ct = doc2.parts.get('[Content_Types].xml')!.text || '';
+  assert.ok(ct.includes('numbering+xml') || reopen(r2.buffer).parts.get('[Content_Types].xml')!.dirty);
 });
 
 test('pageNumber footer：页脚 PAGE 字段 + 部件注册', () => {
@@ -225,9 +227,9 @@ test('pageNumber footer：页脚 PAGE 字段 + 部件注册', () => {
   assert.equal(result.errors.length, 0);
   const doc = reopen(buffer);
   const footerName = result.applied[0].detail.footer;
-  const footer = doc.parts.get(footerName);
+  const footer = doc.parts.get(footerName)!;
   assert.ok(footer, 'footer 部件存在');
-  const fRoot = footer.tree.find((n) => isElement(n, 'w:ftr'));
+  const fRoot = footer.tree!.find((n) => isElement(n, 'w:ftr'))!;
   const xml = footer.text || '';
   // 树内应有 PAGE 指令
   const hasPage = JSON.stringify(fRoot).includes('PAGE');
@@ -237,9 +239,9 @@ test('pageNumber footer：页脚 PAGE 字段 + 部件注册', () => {
   const ref = findChildren(sect, 'w:footerReference').find((f) => getAttr(f, 'w:type') === 'default');
   assert.ok(ref, 'footerReference 已挂载');
   // rels 与 content-types 已注册
-  const rels = doc.parts.get('word/_rels/document.xml.rels');
-  assert.ok(JSON.stringify(rels.tree).includes('footer'));
-  assert.ok(JSON.stringify(doc.parts.get('[Content_Types].xml').tree).includes('footer'));
+  const rels = doc.parts.get('word/_rels/document.xml.rels')!;
+  assert.ok(JSON.stringify(rels.tree!).includes('footer'));
+  assert.ok(JSON.stringify(doc.parts.get('[Content_Types].xml')!.tree!).includes('footer'));
 });
 
 test('normalize：规则集驱动全文重排（标题/正文两类规则）', () => {
@@ -283,15 +285,15 @@ test('生成后自检：产物可重解析且 document.xml 结构完整', () => 
   assert.ok(result.selfCheck.parts >= 3);
   // 空命令 = 纯 round-trip：未编辑部件原样
   const doc = reopen(buffer);
-  assert.equal(doc.parts.get('word/document.xml').text.includes('<w:body>'), true);
+  assert.equal(doc.parts.get('word/document.xml')!.text!.includes('<w:body>'), true);
 });
 
 test('outline dump：段落路径与文本预览可用于寻址', () => {
   const src = makeDocx(para('标题文字') + para('正文内容'));
   const outline = dumpOutline(src);
   assert.equal(outline.paragraphCount, 2);
-  assert.equal(outline.paragraphs[0].path, '/body/p[1]');
-  assert.equal(outline.paragraphs[0].text, '标题文字');
+  assert.equal(outline.paragraphs[0]!.path, '/body/p[1]');
+  assert.equal(outline.paragraphs[0]!.text, '标题文字');
   assert.equal(outline.sections.length, 1);
-  assert.equal(outline.sections[0].pageSize.w, 11906);
+  assert.equal(outline.sections[0]!.pageSize!.w, 11906);
 });

@@ -1,4 +1,4 @@
-// server/workspace.js — 工作台服务层（主进程业务核心，headless 可测）。
+// server/workspace.ts — 工作台服务层（主进程业务核心，headless 可测）。
 //
 // 汇聚 docx 编辑内核 / 存储版本链 / 模板库，向 IPC 层与 agent 工具层提供统一接口：
 //   文档：uploadDocument / getDocumentBuffer / applyCommands（编辑 + 自动快照）/ outline / download
@@ -15,6 +15,8 @@ import { VersionStore } from '../storage/versionStore.js';
 import { TemplateStore } from '../templates/templateStore.js';
 import { applyEdits } from '../docx-core/applyEdits.js';
 import { dumpOutline } from '../docx-core/outline.js';
+import type { EditCommand } from '../docx-core/applyEdits.js';
+import type { VersionEntry } from '../storage/versionStore.js';
 
 const DEFAULT_CONFIG = {
   provider: 'deepseek',
@@ -23,8 +25,31 @@ const DEFAULT_CONFIG = {
   apiKey: '',
 };
 
+export interface PublicConfig {
+  provider: string;
+  model: string;
+  baseUrl: string;
+  hasApiKey: boolean;
+  [key: string]: unknown;
+}
+
+export interface FullConfig {
+  provider: string;
+  model: string;
+  baseUrl: string;
+  apiKey: string;
+  hasApiKey?: boolean;
+  [key: string]: unknown;
+}
+
 export class Workspace {
-  constructor(baseDir) {
+  baseDir: string;
+  objects: LocalFsObjectStore;
+  versions: VersionStore;
+  templates: TemplateStore;
+  configPath: string;
+
+  constructor(baseDir: string) {
     this.baseDir = baseDir;
     mkdirSync(baseDir, { recursive: true });
     this.objects = new LocalFsObjectStore(baseDir);
@@ -36,7 +61,7 @@ export class Workspace {
   // ---- 文档 ----
 
   /** 上传 docx（bytes + 文件名）→ 新工作文档 v1。 */
-  uploadDocument(buffer, name) {
+  uploadDocument(buffer: Buffer | ArrayBuffer | Uint8Array, name?: string): { docId: string; version: VersionEntry; name: string } {
     const { docId, version } = this.versions.createDocument(buffer, {
       name: name || '未命名.docx', origin: 'upload', note: '上传文档（原稿零改动，仅处理副本）',
     });
@@ -47,11 +72,11 @@ export class Workspace {
     return this.versions.listDocuments();
   }
 
-  getDocumentBuffer(docId, versionId) {
+  getDocumentBuffer(docId: string, versionId?: string): Buffer {
     return this.versions.getBuffer(docId, versionId);
   }
 
-  getOutline(docId, opts) {
+  getOutline(docId: string, opts?: { textPreview?: number }) {
     return dumpOutline(this.versions.getBuffer(docId), opts);
   }
 
@@ -59,7 +84,11 @@ export class Workspace {
    * 应用编辑命令（agent 工具与手动操作统一入口）：
    * applyEdits → 内容有变化才自动快照（幂等）→ 返回编辑结果 + 版本信息。
    */
-  applyCommands(docId, commands, { source = 'edit', note = '' } = {}) {
+  applyCommands(
+    docId: string,
+    commands: EditCommand[],
+    { source = 'edit', note = '' }: { source?: string; note?: string } = {},
+  ) {
     const before = this.versions.getBuffer(docId);
     const { buffer, result } = applyEdits(before, commands);
     const snap = this.versions.snapshot(docId, buffer, {
@@ -71,17 +100,17 @@ export class Workspace {
 
   // ---- 版本 ----
 
-  listVersions(docId) {
+  listVersions(docId: string): VersionEntry[] {
     return this.versions.list(docId);
   }
 
-  rollback(docId, versionId) {
+  rollback(docId: string, versionId: string) {
     return this.versions.rollback(docId, versionId);
   }
 
   // ---- 模板 ----
 
-  uploadTemplate(buffer, name) {
+  uploadTemplate(buffer: Buffer | ArrayBuffer | Uint8Array, name?: string) {
     return this.templates.uploadTemplate(buffer, { name });
   }
 
@@ -89,55 +118,55 @@ export class Workspace {
     return this.templates.listTemplates();
   }
 
-  readTemplate(templateId) {
+  readTemplate(templateId: string) {
     return this.templates.readTemplate(templateId);
   }
 
-  instantiateTemplate(templateId, values, name) {
+  instantiateTemplate(templateId: string, values: Record<string, unknown>, name?: string) {
     return this.templates.instantiate(templateId, values, { name });
   }
 
   /** 模板规则集 → 内核命令（"按《通知》模板排"）。 */
-  templateRulesetCommands(templateId) {
+  templateRulesetCommands(templateId: string) {
     return this.templates.rulesetCommands(templateId);
   }
 
   // ---- 配置（R4：界面配置 > 环境变量 > 默认值） ----
 
-  getConfig() {
-    let fileCfg = {};
+  getConfig(): PublicConfig {
+    let fileCfg: Record<string, unknown> = {};
     if (existsSync(this.configPath)) {
       try { fileCfg = JSON.parse(readFileSync(this.configPath, 'utf8')); } catch { /* 忽略坏配置 */ }
     }
-    const envCfg = {
+    const envCfg: Record<string, unknown> = {
       provider: process.env.PAIBAN_PROVIDER,
       model: process.env.PAIBAN_MODEL,
       baseUrl: process.env.PAIBAN_BASE_URL,
       apiKey: process.env.PAIBAN_API_KEY || process.env.ANTHROPIC_API_KEY || process.env.DEEPSEEK_API_KEY || process.env.OPENAI_API_KEY,
     };
-    const cfg = { ...DEFAULT_CONFIG };
+    const cfg: Record<string, unknown> = { ...DEFAULT_CONFIG };
     for (const src of [envCfg, fileCfg]) {
       for (const [k, v] of Object.entries(src)) if (v) cfg[k] = v;
     }
     // 凭证不回传渲染层
     const { apiKey, ...pub } = cfg;
-    return { ...pub, hasApiKey: !!apiKey };
+    return { ...pub, hasApiKey: !!apiKey } as PublicConfig;
   }
 
   /** 供主进程/agent 层使用的完整配置（含凭证，不出主进程）。 */
-  getFullConfig() {
+  getFullConfig(): FullConfig {
     const pub = this.getConfig();
-    let fileCfg = {};
+    let fileCfg: Record<string, unknown> = {};
     if (existsSync(this.configPath)) {
       try { fileCfg = JSON.parse(readFileSync(this.configPath, 'utf8')); } catch { /* ignore */ }
     }
-    const apiKey = fileCfg.apiKey || process.env.PAIBAN_API_KEY
+    const apiKey = (fileCfg.apiKey as string) || process.env.PAIBAN_API_KEY
       || process.env.ANTHROPIC_API_KEY || process.env.DEEPSEEK_API_KEY || process.env.OPENAI_API_KEY || '';
     return { ...pub, apiKey };
   }
 
-  setConfig(patch) {
-    let fileCfg = {};
+  setConfig(patch: Record<string, unknown>): PublicConfig {
+    let fileCfg: Record<string, unknown> = {};
     if (existsSync(this.configPath)) {
       try { fileCfg = JSON.parse(readFileSync(this.configPath, 'utf8')); } catch { /* ignore */ }
     }
@@ -154,8 +183,8 @@ export class Workspace {
 }
 
 // 命令数组 → 人类可读摘要（版本 note / 对话层"它改了什么"）
-export function summarizeCommands(commands) {
-  const parts = [];
+export function summarizeCommands(commands: EditCommand[]): string {
+  const parts: string[] = [];
   for (const c of commands.slice(0, 3)) {
     const where = c.path || (c.match ? `match:${c.match.text}` : c.parent || '');
     parts.push(`${c.command}${where ? ' ' + where : ''}`);

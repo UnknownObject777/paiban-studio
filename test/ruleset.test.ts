@@ -2,16 +2,22 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { existsSync } from 'node:fs';
 
 import { validateRuleset } from '../src/ruleset/schema.js';
 import { loadRuleset } from '../src/ruleset/load.js';
 import { COMPONENT_IDS, PAGE_ID } from '../src/ruleset/components.js';
 
-const REPO_ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+// 项目根：源码在 test/（上两级）；编译产物在 dist/test/（上三级）。
+const HERE = fileURLToPath(new URL('.', import.meta.url));
+const REPO_ROOT = [
+  path.resolve(HERE, '..'),
+  path.resolve(HERE, '../..'),
+].find((p) => existsSync(path.join(p, 'package.json')))!;
 const BUILTIN_DIR = path.join(REPO_ROOT, 'templates', 'rulesets', 'gongwen-default');
 
-function clone(value) {
-  return JSON.parse(JSON.stringify(value));
+function clone<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
 }
 
 function validPair() {
@@ -28,8 +34,8 @@ test('内置公文默认规则集通过校验', () => {
 
 test('内置规则集两文件组件键集与组件清单常量一致', () => {
   const { recognizers, styles } = loadRuleset(BUILTIN_DIR);
-  assert.deepEqual(Object.keys(recognizers.components).sort(), [...COMPONENT_IDS].sort());
-  assert.deepEqual(Object.keys(styles.components).sort(), [...COMPONENT_IDS].sort());
+  assert.deepEqual(Object.keys(recognizers.components as Record<string, unknown>).sort(), [...COMPONENT_IDS].sort());
+  assert.deepEqual(Object.keys(styles.components as Record<string, unknown>).sort(), [...COMPONENT_IDS].sort());
   assert.ok(styles[PAGE_ID], 'styles.json 必须含 page 节');
   assert.equal(recognizers[PAGE_ID], undefined, 'recognizers.json 不得含 page 节');
 });

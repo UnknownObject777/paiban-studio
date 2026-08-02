@@ -1,4 +1,4 @@
-// agent-core/bridge.js — pi agent 接入层（spec 模块 2，调研 #3 路径 1：SDK 主进程内嵌）。
+// agent-core/bridge.ts — pi agent 接入层（spec 模块 2，调研 #3 路径 1：SDK 主进程内嵌）。
 //
 // 职责：
 //   - createAgentSession() 内嵌，tools 白名单只放自研四工具（裁剪内置文件工具，防绕过编辑内核）
@@ -11,6 +11,7 @@
 import { join } from 'node:path';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { createTools } from './tools.js';
+import type { Workspace } from '../server/workspace.js';
 
 const SYSTEM_PRIMER = `你是「排版工作台」的文档排版助手，专门处理中文公文 Word 文档（.docx）。
 
@@ -30,36 +31,61 @@ const SYSTEM_PRIMER = `你是「排版工作台」的文档排版助手，专门
 
 回复要求：简要说明做了什么修改、产生的新版本号；不要输出大段无关解释。`;
 
+export interface AgentStatus {
+  ready: boolean;
+  reason?: string;
+  provider?: string;
+  model?: string;
+  gateway?: boolean;
+}
+
+export type AgentEvent =
+  | { type: 'text_delta'; delta: string }
+  | { type: 'tool_start'; name: string; args: string }
+  | { type: 'tool_end'; name: string; isError: boolean; summary: string }
+  | { type: 'done' }
+  | { type: 'error'; message: string }
+  | { type: 'user'; message: string };
+
 export class AgentBridge {
-  constructor(workspace) {
+  workspace: Workspace;
+  session: any;
+  listeners: Set<(event: AgentEvent) => void>;
+  ready: boolean;
+  statusInfo: AgentStatus;
+  _docPrimed: Set<string>;
+  _primed: boolean;
+
+  constructor(workspace: Workspace) {
     this.workspace = workspace;
     this.session = null;
     this.listeners = new Set();
     this.ready = false;
     this.statusInfo = { ready: false };
     this._docPrimed = new Set(); // docId → 已注入结构摘要
+    this._primed = false;
   }
 
-  onEvent(fn) {
+  onEvent(fn: (event: AgentEvent) => void): void {
     this.listeners.add(fn);
   }
 
-  _emit(event) {
+  _emit(event: AgentEvent): void {
     for (const fn of this.listeners) {
       try { fn(event); } catch { /* 渲染层断开不致命 */ }
     }
   }
 
-  async init() {
+  async init(): Promise<void> {
     const cfg = this.workspace.getFullConfig();
     const agentDir = join(this.workspace.baseDir, 'agent');
     mkdirSync(agentDir, { recursive: true });
 
-    let sdk;
+    let sdk: any;
     try {
       sdk = await import('@earendil-works/pi-coding-agent');
     } catch (err) {
-      this.statusInfo = { ready: false, reason: 'pi SDK 未安装: ' + err.message };
+      this.statusInfo = { ready: false, reason: 'pi SDK 未安装: ' + (err as Error).message };
       return;
     }
 
@@ -67,7 +93,7 @@ export class AgentBridge {
     const providerId = usingGateway ? 'paiban-gateway' : (cfg.provider || 'deepseek');
 
     // OpenAI 兼容端点：写 models.json（apiKey 经环境变量插值，不落明文到 models.json）
-    let modelsPath = null;
+    let modelsPath: string | null = null;
     if (usingGateway) {
       process.env.PAIBAN_AGENT_KEY = cfg.apiKey || 'paiban-local';
       modelsPath = join(agentDir, 'models.json');
@@ -95,7 +121,7 @@ export class AgentBridge {
       });
       const model = modelRuntime.getModel(providerId, cfg.model);
       if (!model) {
-        const available = modelRuntime.getModels(providerId).map((m) => m.id).slice(0, 10);
+        const available = modelRuntime.getModels(providerId).map((m: { id: string }) => m.id).slice(0, 10);
         this.statusInfo = {
           ready: false,
           reason: `模型 ${providerId}/${cfg.model} 不可用${available.length ? '；可用: ' + available.join(', ') : ''}`,
@@ -117,12 +143,12 @@ export class AgentBridge {
       this.ready = true;
       this.statusInfo = { ready: true, provider: providerId, model: cfg.model, gateway: usingGateway };
     } catch (err) {
-      this.statusInfo = { ready: false, reason: err.message, provider: providerId, model: cfg.model };
+      this.statusInfo = { ready: false, reason: (err as Error).message, provider: providerId, model: cfg.model };
     }
   }
 
-  _wireEvents(session) {
-    session.subscribe((event) => {
+  _wireEvents(session: any): void {
+    session.subscribe((event: any) => {
       const e = event;
       if (e.type === 'message_update' && e.assistantMessageEvent?.type === 'text_delta') {
         this._emit({ type: 'text_delta', delta: e.assistantMessageEvent.delta });
@@ -138,19 +164,19 @@ export class AgentBridge {
     });
   }
 
-  status() {
+  status(): AgentStatus {
     return this.statusInfo;
   }
 
-  async abort() {
+  async abort(): Promise<void> {
     await this.session?.abort();
   }
 
   /**
    * 发送用户消息。docId 提供时注入文档上下文（首次注入结构摘要）。
-   * @returns {Promise<{ ok: boolean, error?: string }>}
+   * @returns 发送是否成功（失败时含原因）
    */
-  async send(docId, message) {
+  async send(docId: string | undefined, message: string): Promise<{ ok: boolean; error?: string }> {
     if (!this.ready || !this.session) {
       return { ok: false, error: this.statusInfo.reason || 'agent 未就绪（请检查模型配置）' };
     }
@@ -177,15 +203,15 @@ export class AgentBridge {
       await this.session.prompt(prompt);
       return { ok: true };
     } catch (err) {
-      this._emit({ type: 'error', message: err.message });
-      return { ok: false, error: err.message };
+      this._emit({ type: 'error', message: (err as Error).message });
+      return { ok: false, error: (err as Error).message };
     }
   }
 }
 
 // ---- 事件摘要 ----
 
-function summarizeArgs(args) {
+function summarizeArgs(args: any): string {
   if (!args || typeof args !== 'object') return '';
   if (args.commands) return `${args.commands.length} 条命令${args.note ? '：' + args.note : ''}`;
   if (args.action) return args.action + (args.versionId ? ' ' + args.versionId : '');
@@ -193,7 +219,7 @@ function summarizeArgs(args) {
   return Object.keys(args).join(', ');
 }
 
-function summarizeToolResult(e) {
+function summarizeToolResult(e: any): string {
   const d = e.result?.details ?? e.details;
   if (!d || typeof d !== 'object') return '';
   if (d.version) return `${d.version.id}${d.versionCreated ? '（新版本）' : ''}，applied ${d.applied?.length ?? 0}，errors ${d.errors?.length ?? 0}`;

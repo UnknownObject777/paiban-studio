@@ -6,10 +6,15 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+// 项目根：源码在 preview/（上级）；编译产物在 dist/preview/（上两级）。
+const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
+const ROOT = [
+  path.resolve(MODULE_DIR, '..'),
+  path.resolve(MODULE_DIR, '../..'),
+].find((p) => fs.existsSync(path.join(p, 'package.json')))!;
 const PORT = Number(process.env.PORT ?? 4173);
 
-const MIME = new Map([
+const MIME = new Map<string, string>([
   ['.html', 'text/html; charset=utf-8'],
   ['.css', 'text/css; charset=utf-8'],
   ['.js', 'text/javascript; charset=utf-8'],
@@ -18,8 +23,8 @@ const MIME = new Map([
   ['.md', 'text/plain; charset=utf-8'],
 ]);
 
-const server = http.createServer((req, res) => {
-  const urlPath = decodeURIComponent(new URL(req.url, 'http://x').pathname);
+const server = http.createServer((req: http.IncomingMessage, res: http.ServerResponse) => {
+  const urlPath = decodeURIComponent(new URL(req.url ?? '/', 'http://x').pathname);
   const filePath = path.normalize(path.join(ROOT, urlPath));
   if (!filePath.startsWith(ROOT)) {
     res.writeHead(403).end('forbidden');

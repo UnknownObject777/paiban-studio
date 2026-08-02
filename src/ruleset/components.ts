@@ -12,8 +12,15 @@ export const COMPONENT_KINDS = Object.freeze({
   TABLE: 'table',
 });
 
+export interface ComponentDef {
+  id: string;
+  name: string;
+  kind: string;
+  sample: string | null;
+}
+
 // MVP 最小组件集（docs/mvp-spec.md R2 / issue #1 已拍板）
-export const COMPONENTS = Object.freeze([
+export const COMPONENTS: readonly ComponentDef[] = Object.freeze([
   {
     id: 'title',
     name: '题目',
@@ -77,8 +84,8 @@ export const COMPONENTS = Object.freeze([
   },
 ]);
 
-export const COMPONENT_IDS = Object.freeze(COMPONENTS.map((c) => c.id));
+export const COMPONENT_IDS: readonly string[] = Object.freeze(COMPONENTS.map((c) => c.id));
 
-export function getComponent(id) {
+export function getComponent(id: string): ComponentDef | null {
   return COMPONENTS.find((c) => c.id === id) ?? null;
 }

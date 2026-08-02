@@ -12,9 +12,39 @@
 
 import { XMLParser, XMLBuilder } from 'fast-xml-parser';
 
+// ---- fxp preserveOrder 树类型 ----
+
+/** 属性对象（键形如 `@_w:val`；OOXML 属性值恒为字符串）。 */
+export interface XmlAttrs {
+  [attr: string]: string;
+}
+
+/**
+ * fast-xml-parser preserveOrder 节点：
+ *   元素节点: { "w:p": [ ...children ], ":@": { "@_w:val": "center" } }
+ *   文本节点: { "#text": "..." }
+ * 通过索引签名表达动态 tag（元素节点）与特殊键（:@ 属性 / #text 文本）。
+ */
+export interface XmlNode {
+  [tag: string]: XmlNode[] | XmlAttrs | string | undefined;
+  ':@'?: XmlAttrs;
+  '#text'?: string;
+}
+
+/** 部件 XML 的 byte 级细节（BOM、XML 声明后分隔符），build 时按此还原。 */
+export interface ParseMeta {
+  bom: boolean;
+  declSep: '' | '\r\n' | '\n';
+}
+
+export interface ParsedXml {
+  tree: XmlNode[];
+  meta: ParseMeta;
+}
+
 export const DECL_RE = /^(﻿)?<\?xml[^>]*\?>/;
 
-export function createParser() {
+export function createParser(): XMLParser {
   return new XMLParser({
     preserveOrder: true,
     ignoreAttributes: false,
@@ -25,7 +55,7 @@ export function createParser() {
   });
 }
 
-export function createBuilder() {
+export function createBuilder(): XMLBuilder {
   return new XMLBuilder({
     preserveOrder: true,
     ignoreAttributes: false,
@@ -35,7 +65,7 @@ export function createBuilder() {
 
 // 把 fxp 展开的空元素闭合标签还原为 self-closing（无空格：`<w:jc/>`）。
 // 匹配形态：`<tag attrs></tag>`；attrs 内不出现裸 `>`，因此 `[^>]*` 安全。
-function restoreSelfClosing(s) {
+function restoreSelfClosing(s: string): string {
   return s.replace(/<([\w:.-]+)((?:[^>]*)?)><\/\1>/g, (_, tag, attrs) => {
     return '<' + tag + attrs + '/>';
   });
@@ -45,7 +75,7 @@ function restoreSelfClosing(s) {
 // 匹配 `>文本<` 区间（区间内无 `<`，故为纯文本节点；属性区位于 `<...>` 内不受影响），
 // 把该区间内所有引号实体还原——覆盖同一文本节点内的多处引号（如 TOC 字段指令）。
 // 仅作用于 build 输出（dirty 部件），实体转义还原后 XML 语义不变。
-function restoreTextQuotes(s) {
+function restoreTextQuotes(s: string): string {
   return s.replace(/>([^<]*?)</g, (m, text) => {
     if (!text.includes('&quot;') && !text.includes('&apos;')) return m;
     return '>' + text.replace(/&quot;/g, '"').replace(/&apos;/g, "'") + '<';
@@ -54,18 +84,17 @@ function restoreTextQuotes(s) {
 
 // 解析 OOXML 部件 XML 字符串 → fxp preserveOrder 结构数组。
 // 返回 { tree, meta }，meta 记录 byte 级细节（BOM、声明后分隔符）供 build 还原。
-export function parseXml(xml) {
-  const meta = { bom: xml.charCodeAt(0) === 0xfeff };
+export function parseXml(xml: string): ParsedXml {
+  const meta: ParseMeta = { bom: xml.charCodeAt(0) === 0xfeff, declSep: '' };
   const body = meta.bom ? xml.slice(1) : xml;
   const m = DECL_RE.exec(body);
-  meta.declSep = '';
   if (m) {
     const after = body.slice(m[0].length);
     if (after.startsWith('\r\n')) meta.declSep = '\r\n';
     else if (after.startsWith('\n')) meta.declSep = '\n';
   }
   const parser = createParser();
-  let tree = parser.parse(xml);
+  let tree = parser.parse(xml) as XmlNode[];
   // fxp 把 BOM 保留为根元素前的文本节点；剥离它，由 buildXml 依据 meta.bom 统一加回，
   // 避免"fxp 输出自带 BOM + 手动加回"产生双重 BOM。
   if (meta.bom && tree.length && tree[0] && tree[0]['#text']) {
@@ -78,8 +107,8 @@ export function parseXml(xml) {
 }
 
 // 序列化 fxp 结构数组 → 还原 byte 级细节 → OOXML 部件 XML 字符串。
-export function buildXml(tree, meta = {}) {
-  let out = createBuilder().build(tree);
+export function buildXml(tree: XmlNode[], meta: ParseMeta = { bom: false, declSep: '' }): string {
+  let out = createBuilder().build(tree) as string;
   out = restoreTextQuotes(restoreSelfClosing(out));
   if (meta.declSep === '\r\n' || meta.declSep === '\n') {
     out = out.replace(DECL_RE, (m) => m + meta.declSep);
@@ -89,7 +118,7 @@ export function buildXml(tree, meta = {}) {
 }
 
 // 便捷：字符串 → 字符串 round-trip（供测试与无 meta 场景）。
-export function roundTripXml(xml) {
+export function roundTripXml(xml: string): string {
   const { tree, meta } = parseXml(xml);
   return buildXml(tree, meta);
 }

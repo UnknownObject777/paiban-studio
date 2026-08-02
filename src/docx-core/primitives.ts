@@ -1,4 +1,4 @@
-// docx-core/primitives.js — 编辑原语实现（MVP 子集，spec 模块 1）。
+// docx-core/primitives.ts — 编辑原语实现（MVP 子集，spec 模块 1）。
 //
 // 覆盖：
 //   段落：对齐 / 首行缩进（字符或磅）/ 行距（磅值或倍数）/ 段前段后 / 分页控制 / 大纲级别 / 样式
@@ -16,19 +16,42 @@ import {
   PPR_ORDER, RPR_ORDER, SECTPR_ORDER,
 } from './ooxml.js';
 import { getXmlTree, markDirty } from './docx.js';
-import { walkSections, walkParagraphs } from './model.js';
-import * as modelModule from './model.js';
+import { walkSections, walkParagraphs, parsePath, resolvePath } from './model.js';
 import { parseXml } from './xml.js';
+import type { XmlNode } from './xml.js';
+import type { Docx } from './docx.js';
 
 export const CM_TO_TWIPS = 566.929; // 1cm = 566.929 twips
 export const PT_TO_TWIPS = 20;
 
-const twips = (cm) => Math.round(cm * CM_TO_TWIPS);
-const lineTwips = (pt) => Math.round(pt * PT_TO_TWIPS);
+const twips = (cm: number): number => Math.round(cm * CM_TO_TWIPS);
+const lineTwips = (pt: number): number => Math.round(pt * PT_TO_TWIPS);
 
 // ---- 段落属性 ----
 
-const ALIGN_MAP = {
+export interface ParagraphProps {
+  align?: string;
+  style?: string;
+  firstLineChars?: number;
+  firstLinePt?: number;
+  indentLeftPt?: number;
+  indentRightPt?: number;
+  hangingChars?: number;
+  lineSpacingPt?: number;
+  lineSpacingMinPt?: number;
+  lineSpacingMultiple?: number;
+  spacingBeforePt?: number;
+  spacingAfterPt?: number;
+  spacingBeforeLines?: number;
+  spacingAfterLines?: number;
+  pageBreakBefore?: boolean;
+  keepNext?: boolean;
+  keepLines?: boolean;
+  outlineLevel?: number;
+  [key: string]: unknown;
+}
+
+const ALIGN_MAP: Record<string, string> = {
   left: 'left', center: 'center', right: 'right',
   justify: 'both', both: 'both', distribute: 'distribute',
   左: 'left', 居中: 'center', 右: 'right', 两端: 'both', 分散: 'distribute',
@@ -49,9 +72,9 @@ const ALIGN_MAP = {
  *   keepNext/keepLines   与下段同页 / 段内不分页（bool）
  *   outlineLevel         大纲级别 0-8（9 = 正文）
  */
-export function setParagraphProps(pNode, props) {
+export function setParagraphProps(pNode: XmlNode, props: ParagraphProps): string[] {
   const pPr = ensurePropContainer(pNode, 'w:pPr');
-  const applied = [];
+  const applied: string[] = [];
 
   if (props.align !== undefined) {
     const val = ALIGN_MAP[props.align];
@@ -64,7 +87,7 @@ export function setParagraphProps(pNode, props) {
     applied.push(`style=${props.style}`);
   }
   // 缩进（firstLineChars 与 firstLine 可同时写，Word 以 chars 优先）
-  const ind = {};
+  const ind: Record<string, string | number> = {};
   if (props.firstLineChars !== undefined) ind['w:firstLineChars'] = Math.round(props.firstLineChars);
   if (props.firstLinePt !== undefined) ind['w:firstLine'] = lineTwips(props.firstLinePt);
   if (props.indentLeftPt !== undefined) ind['w:left'] = lineTwips(props.indentLeftPt);
@@ -75,7 +98,7 @@ export function setParagraphProps(pNode, props) {
     applied.push(`ind=${JSON.stringify(ind)}`);
   }
   // 行距与段距
-  const spacing = {};
+  const spacing: Record<string, string | number> = {};
   if (props.lineSpacingPt !== undefined) {
     spacing['w:line'] = lineTwips(props.lineSpacingPt);
     spacing['w:lineRule'] = 'exact';
@@ -95,7 +118,7 @@ export function setParagraphProps(pNode, props) {
     applied.push(`spacing=${JSON.stringify(spacing)}`);
   }
   // 分页控制
-  for (const [key, tag] of [['pageBreakBefore', 'w:pageBreakBefore'], ['keepNext', 'w:keepNext'], ['keepLines', 'w:keepLines']]) {
+  for (const [key, tag] of [['pageBreakBefore', 'w:pageBreakBefore'], ['keepNext', 'w:keepNext'], ['keepLines', 'w:keepLines']] as const) {
     if (props[key] !== undefined) {
       if (props[key]) setPPrLeaf(pPr, tag, {});
       else removeChildren(pPr, tag);
@@ -111,7 +134,21 @@ export function setParagraphProps(pNode, props) {
 
 // ---- run 属性 ----
 
-const UNDERLINE_MAP = {
+export interface RunProps {
+  eastAsia?: string;
+  ascii?: string;
+  hAnsi?: string;
+  cs?: string;
+  sizePt?: number;
+  bold?: boolean;
+  italic?: boolean;
+  underline?: string | boolean;
+  color?: string;
+  highlight?: string;
+  [key: string]: unknown;
+}
+
+const UNDERLINE_MAP: Record<string, string> = {
   true: 'single', single: 'single', double: 'double', dotted: 'dotted',
   dashed: 'dash', wave: 'wave', none: 'none', false: 'none',
 };
@@ -126,11 +163,11 @@ const UNDERLINE_MAP = {
  *   color      颜色 hex（不带 #）
  *   highlight  突出显示色（yellow 等）
  */
-export function setRunProps(rNode, props) {
+export function setRunProps(rNode: XmlNode, props: RunProps): string[] {
   const rPr = ensurePropContainer(rNode, 'w:rPr');
-  const applied = [];
+  const applied: string[] = [];
 
-  const fonts = {};
+  const fonts: Record<string, string> = {};
   if (props.eastAsia !== undefined) fonts['w:eastAsia'] = props.eastAsia;
   if (props.ascii !== undefined) fonts['w:ascii'] = props.ascii;
   if (props.hAnsi !== undefined) fonts['w:hAnsi'] = props.hAnsi;
@@ -145,7 +182,7 @@ export function setRunProps(rNode, props) {
     setRPrLeaf(rPr, 'w:szCs', { 'w:val': half });
     applied.push(`sz=${half}`);
   }
-  for (const [key, tag] of [['bold', 'w:b'], ['italic', 'w:i']]) {
+  for (const [key, tag] of [['bold', 'w:b'], ['italic', 'w:i']] as const) {
     if (props[key] !== undefined) {
       const leaf = setRPrLeaf(rPr, tag, {});
       // OOXML 开关：显式写 val 以覆盖样式继承
@@ -157,7 +194,7 @@ export function setRunProps(rNode, props) {
     }
   }
   if (props.underline !== undefined) {
-    const val = UNDERLINE_MAP[props.underline];
+    const val = UNDERLINE_MAP[String(props.underline)];
     if (!val) throw new Error(`未知下划线: ${props.underline}`);
     if (val === 'none') removeChildren(rPr, 'w:u');
     else setRPrLeaf(rPr, 'w:u', { 'w:val': val });
@@ -176,20 +213,29 @@ export function setRunProps(rNode, props) {
 }
 
 // 对段落内全部 run 应用 run 属性（空段落无 run 时可选创建空 run 承载格式）。
-export function setParagraphRunProps(pNode, props) {
+export function setParagraphRunProps(pNode: XmlNode, props: RunProps): { runCount: number; applied: string[] } {
   const runs = findChildren(pNode, 'w:r');
-  const applied = [];
+  const applied: string[] = [];
   for (const r of runs) applied.push(...setRunProps(r, props));
   return { runCount: runs.length, applied };
 }
 
 // ---- 节属性（页面设置） ----
 
-const PAGE_SIZES = {
+const PAGE_SIZES: Record<string, { w: number; h: number }> = {
   a4: { w: 11906, h: 16838 }, a3: { w: 16838, h: 23811 },
   letter: { w: 12240, h: 15840 }, legal: { w: 12240, h: 20160 },
   '16k': { w: 11040, h: 15600 },
 };
+
+export interface SectionProps {
+  pageSize?: string | { widthCm: number; heightCm: number };
+  orientation?: string;
+  marginsCm?: Record<string, number>;
+  pageNumFmt?: string;
+  pageNumStart?: number;
+  [key: string]: unknown;
+}
 
 /**
  * 设置节属性（作用于指定 sectPr）。props 支持：
@@ -199,11 +245,11 @@ const PAGE_SIZES = {
  *   pageNumFmt: 'decimal'|'chineseCounting'|'lowerRoman'|...
  *   pageNumStart: 起始页码
  */
-export function setSectionProps(sectPr, props) {
-  const applied = [];
+export function setSectionProps(sectPr: XmlNode, props: SectionProps): string[] {
+  const applied: string[] = [];
 
   if (props.pageSize !== undefined || props.orientation !== undefined) {
-    let size = null;
+    let size: { w: number; h: number } | null = null;
     if (typeof props.pageSize === 'string') {
       size = PAGE_SIZES[props.pageSize.toLowerCase()];
       if (!size) throw new Error(`未知纸张: ${props.pageSize}`);
@@ -249,13 +295,13 @@ export function setSectionProps(sectPr, props) {
 }
 
 // 对文档所有节应用属性；sectionIndex 指定时只应用该节（0 起，按文档顺序）。
-export function setAllSectionsProps(docx, props, sectionIndex = undefined) {
-  const sects = [];
+export function setAllSectionsProps(docx: Docx, props: SectionProps, sectionIndex?: number): { sections: number; applied: string[] } {
+  const sects: XmlNode[] = [];
   walkSections(docx, (sect) => sects.push(sect));
   if (!sects.length) throw new Error('文档无 sectPr（非合法 Word 文档？）');
   const targets = sectionIndex === undefined ? sects : [sects[sectionIndex]].filter(Boolean);
   if (!targets.length) throw new Error(`节索引越界: ${sectionIndex}（共 ${sects.length} 节）`);
-  const applied = [];
+  const applied: string[] = [];
   for (const s of targets) applied.push(...setSectionProps(s, props));
   markDirty(docx, 'word/document.xml');
   return { sections: targets.length, applied };
@@ -264,7 +310,7 @@ export function setAllSectionsProps(docx, props, sectionIndex = undefined) {
 // ---- 页脚页码字段 ----
 
 // 在 document.xml.rels 中分配新 rId。
-function nextRelId(relsTree) {
+function nextRelId(relsTree: XmlNode[]): { root: XmlNode; id: string } {
   const root = relsTree.find((n) => isElement(n, 'Relationships'));
   if (!root) throw new Error('非法 rels 部件');
   let max = 0;
@@ -276,7 +322,7 @@ function nextRelId(relsTree) {
 }
 
 // 确保 [Content_Types].xml 含 footer 的 Override。
-function ensureContentTypeOverride(ctTree, partName, contentType) {
+function ensureContentTypeOverride(ctTree: XmlNode[], partName: string, contentType: string): void {
   const root = ctTree.find((n) => isElement(n, 'Types'));
   if (!root) throw new Error('非法 [Content_Types].xml');
   const exists = findChildren(root, 'Override').some((o) => getAttr(o, 'PartName') === partName);
@@ -285,27 +331,32 @@ function ensureContentTypeOverride(ctTree, partName, contentType) {
   }
 }
 
+export interface FooterOptions {
+  align?: string;
+  sectionIndex?: number;
+}
+
 /**
  * 为文档（指定节，默认最后一节）插入居中页码页脚（PAGE 字段）。
  * 若节已有 footerReference 则复用既有 footer 部件并追加页码段；否则新建 footerN.xml。
  */
-export function ensurePageNumberFooter(docx, { align = 'center', sectionIndex } = {}) {
+export function ensurePageNumberFooter(docx: Docx, { align = 'center', sectionIndex }: FooterOptions = {}): { footer: string; align: string } {
   const docPart = 'word/document.xml';
   // 1. 找目标 sectPr
-  const sects = [];
+  const sects: XmlNode[] = [];
   walkSections(docx, (sect) => sects.push(sect));
   if (!sects.length) throw new Error('文档无 sectPr');
   const sectPr = sectionIndex === undefined ? sects[sects.length - 1] : sects[sectionIndex];
   if (!sectPr) throw new Error(`节索引越界: ${sectionIndex}`);
 
   // 2. 已有 footerReference → 复用部件
-  let footerName = null;
+  let footerName: string | null = null;
   const existing = findChildren(sectPr, 'w:footerReference').find((f) => getAttr(f, 'w:type') === 'default');
-  const relsTree = getXmlTree(docx, 'word/_rels/document.xml.rels');
+  const relsTree = getXmlTree(docx, 'word/_rels/document.xml.rels')!;
   if (existing) {
     const rId = getAttr(existing, 'r:id');
     const root = relsTree.find((n) => isElement(n, 'Relationships'));
-    const rel = findChildren(root, 'Relationship').find((r) => getAttr(r, 'Id') === rId);
+    const rel = root ? findChildren(root, 'Relationship').find((r) => getAttr(r, 'Id') === rId) : undefined;
     if (rel) footerName = 'word/' + getAttr(rel, 'Target');
   }
 
@@ -329,7 +380,7 @@ export function ensurePageNumberFooter(docx, { align = 'center', sectionIndex } 
     }));
     markDirty(docx, 'word/_rels/document.xml.rels');
 
-    const ctTree = getXmlTree(docx, '[Content_Types].xml');
+    const ctTree = getXmlTree(docx, '[Content_Types].xml')!;
     ensureContentTypeOverride(ctTree, '/' + footerName,
       'application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml');
     markDirty(docx, '[Content_Types].xml');
@@ -340,7 +391,8 @@ export function ensurePageNumberFooter(docx, { align = 'center', sectionIndex } 
 
   // 4. 向 footer 写入 PAGE 字段段落（先清掉旧页码段：含 PAGE 指令的段落）
   const fPart = docx.parts.get(footerName);
-  const fRoot = fPart.tree.find((node) => isElement(node, 'w:ftr'));
+  if (!fPart || fPart.kind !== 'xml') throw new Error(`footer 部件非法: ${footerName}`);
+  const fRoot = fPart.tree.find((node) => isElement(node, 'w:ftr'))!;
   if (!fRoot) throw new Error(`footer 部件非法: ${footerName}`);
   const jcVal = align === 'left' ? 'left' : align === 'right' ? 'right' : 'center';
   const p = el('w:p', {}, [
@@ -352,9 +404,9 @@ export function ensurePageNumberFooter(docx, { align = 'center', sectionIndex } 
     el('w:r', {}, [el('w:fldChar', { 'w:fldCharType': 'end' })]),
   ]);
   // 移除已有 PAGE 字段段，避免重复
-  const hasPageField = (pNode) => {
+  const hasPageField = (pNode: XmlNode): boolean => {
     let found = false;
-    const visit = (n) => {
+    const visit = (n: XmlNode): void => {
       for (const c of childrenOf(n)) {
         if (isElement(c, 'w:instrText') && /PAGE/.test(childrenOf(c).map((x) => x['#text'] || '').join(''))) found = true;
         else if (tagOf(c)) visit(c);
@@ -373,10 +425,17 @@ export function ensurePageNumberFooter(docx, { align = 'center', sectionIndex } 
 // ---- findReplace（跨 run） ----
 
 // 段落的文本节点清单：[{ tNode, text, start, end }]（start/end 为拼接文本中的偏移）
-function paragraphTextNodes(pNode) {
-  const nodes = [];
+interface TextNodeRef {
+  tNode: XmlNode;
+  text: string;
+  start: number;
+  end: number;
+}
+
+function paragraphTextNodes(pNode: XmlNode): TextNodeRef[] {
+  const nodes: TextNodeRef[] = [];
   let offset = 0;
-  const visit = (node) => {
+  const visit = (node: XmlNode): void => {
     for (const c of childrenOf(node)) {
       if (isElement(c, 'w:t')) {
         const text = childrenOf(c).map((x) => x['#text'] || '').join('');
@@ -393,17 +452,20 @@ function paragraphTextNodes(pNode) {
   return nodes;
 }
 
-function setTextNodeText(tNode, text) {
+function setTextNodeText(tNode: XmlNode, text: string): void {
   tNode['w:t'] = text === '' ? [] : [{ '#text': text }];
   if (text.startsWith(' ') || text.endsWith(' ')) {
     setAttr(tNode, 'xml:space', 'preserve');
   }
 }
 
+// findReplace 的替换串暂存（replaceOnceInParagraph 需要，避免长参数链）。
+let pendingReplacement = '';
+
 // 在段落中执行一次替换（替换第一个匹配），返回是否命中。
 // 跨 run 匹配：替换文本写入首个重叠文本节点，其余重叠节点截去重叠部分；
 // 每次替换后由调用方重算节点偏移（段落级开销可忽略，逻辑零漂移）。
-function replaceOnceInParagraph(pNode, find, caseSensitive) {
+function replaceOnceInParagraph(pNode: XmlNode, find: string, caseSensitive: boolean): boolean {
   const nodes = paragraphTextNodes(pNode);
   const full = nodes.map((n) => n.text).join('');
   const haystack = caseSensitive ? full : full.toLowerCase();
@@ -417,7 +479,7 @@ function replaceOnceInParagraph(pNode, find, caseSensitive) {
     const localS = Math.max(0, ms - n.start);
     const localE = Math.min(n.text.length, me - n.start);
     if (first) {
-      setTextNodeText(n.tNode, n.text.slice(0, localS) + findReplace._replacement + n.text.slice(localE));
+      setTextNodeText(n.tNode, n.text.slice(0, localS) + pendingReplacement + n.text.slice(localE));
       first = false;
     } else {
       setTextNodeText(n.tNode, n.text.slice(0, localS) + n.text.slice(localE));
@@ -426,36 +488,49 @@ function replaceOnceInParagraph(pNode, find, caseSensitive) {
   return true;
 }
 
+export interface FindReplaceOptions {
+  caseSensitive?: boolean;
+  maxCount?: number;
+}
+
 /**
  * 全文查找替换。自动处理跨 run 匹配。options: { caseSensitive, maxCount }
  * 返回 { replaced, paragraphs }。
  */
-export function findReplace(docx, find, replace, options = {}) {
+export function findReplace(docx: Docx, find: string, replace: string, options: FindReplaceOptions = {}): { replaced: number; paragraphs: string[] } {
   if (!find) throw new Error('findReplace 需要非空 find');
   let replaced = 0;
-  const touched = new Set();
-  findReplace._replacement = replace; // 传给 replaceOnceInParagraph（避免长参数链）
+  const touched = new Set<string>();
+  pendingReplacement = replace;
 
   walkParagraphs(docx, (pNode, path) => {
     while (!options.maxCount || replaced < options.maxCount) {
-      if (!replaceOnceInParagraph(pNode, find, options.caseSensitive)) break;
+      if (!replaceOnceInParagraph(pNode, find, options.caseSensitive ?? false)) break;
       replaced++;
       touched.add(path);
     }
   });
 
-  findReplace._replacement = undefined;
+  pendingReplacement = '';
   if (replaced) markDirty(docx, 'word/document.xml');
   return { replaced, paragraphs: [...touched] };
 }
 
 // ---- 结构原语：add / remove / move ----
 
+export interface ParagraphSpec {
+  kind?: 'paragraph';
+  text?: string;
+  props?: ParagraphProps;
+  runs?: Array<{ text?: string; props?: RunProps }>;
+  runProps?: RunProps;
+}
+
 /**
  * 构造段落节点。spec: { text, props(段落属性), runs:[{ text, props(run属性) }] }
  * runs 缺省时以单 run 承载 text。
  */
-export function buildParagraph({ text = '', props = {}, runs = undefined, runProps = {} } = {}) {
+export function buildParagraph({ text = '', props = {}, runs = undefined, runProps = {} }: ParagraphSpec = {}): XmlNode {
   const p = el('w:p');
   if (Object.keys(props).length) setParagraphProps(p, props);
   const runSpecs = runs !== undefined ? runs : [{ text, props: runProps }];
@@ -468,15 +543,17 @@ export function buildParagraph({ text = '', props = {}, runs = undefined, runPro
   return p;
 }
 
+export type AddPosition = 'end' | 'start' | { before: string } | { after: string };
+
 /**
  * 在 parentPath 下插入节点（paragraph spec 或原始 fxp 节点）。
  * position: 'end'（默认）| 'start' | { before: path } | { after: path }
  */
-export function addNode(docx, parentPath, nodeSpec, position = 'end') {
+export function addNode(docx: Docx, parentPath: string, nodeSpec: unknown, position: AddPosition = 'end'): { inserted: true } {
   const { node: parent } = resolveParent(docx, parentPath);
-  const node = nodeSpec && nodeSpec.kind === 'paragraph'
-    ? buildParagraph(nodeSpec)
-    : nodeSpec; // 原始 fxp 节点
+  const node = nodeSpec && typeof nodeSpec === 'object' && (nodeSpec as ParagraphSpec).kind === 'paragraph'
+    ? buildParagraph(nodeSpec as ParagraphSpec)
+    : (nodeSpec as XmlNode); // 原始 fxp 节点
   const siblings = childrenOf(parent);
   if (position === 'end') {
     // body 末尾的 sectPr 必须保持最后
@@ -485,31 +562,31 @@ export function addNode(docx, parentPath, nodeSpec, position = 'end') {
     else siblings.push(node);
   } else if (position === 'start') {
     siblings.unshift(node);
-  } else if (position && position.before) {
+  } else if (position && typeof position === 'object' && 'before' in position) {
     siblings.splice(indexOfPath(docx, parent, position.before), 0, node);
-  } else if (position && position.after) {
+  } else if (position && typeof position === 'object' && 'after' in position) {
     siblings.splice(indexOfPath(docx, parent, position.after) + 1, 0, node);
   }
   markDirty(docx, 'word/document.xml');
   return { inserted: true };
 }
 
-function resolveParent(docx, parentPath) {
-  return modelModule.resolvePath(docx, parentPath);
+function resolveParent(docx: Docx, parentPath: string): { node: XmlNode } {
+  return resolvePath(docx, parentPath);
 }
 
-function indexOfPath(docx, parent, path) {
-  const segs = modelModule.parsePath(path);
+function indexOfPath(docx: Docx, parent: XmlNode, path: string): number {
+  const segs = parsePath(path);
   const lastSeg = segs[segs.length - 1];
   const matches = childrenOf(parent).filter((c) => isElement(c, lastSeg.tag));
-  const target = lastSeg.index === 'last' ? matches[matches.length - 1] : matches[lastSeg.index - 1];
+  const target = lastSeg.index === 'last' ? matches[matches.length - 1] : matches[(lastSeg.index as number) - 1];
   if (!target) throw new Error(`定位插入点失败: ${path}`);
   return childrenOf(parent).indexOf(target);
 }
 
 // 删除路径指向的节点。禁止删除 body 末尾 sectPr。
-export function removeNode(docx, path) {
-  const { node, parent } = modelModule.resolvePath(docx, path);
+export function removeNode(docx: Docx, path: string): { removed: true } {
+  const { node, parent } = resolvePath(docx, path);
   if (!parent) throw new Error('不能删除根元素');
   if (isElement(node, 'w:sectPr') && isElement(parent, 'w:body')) {
     throw new Error('不能删除 body 级 sectPr（会破坏文档结构）；请用 set 修改节属性');
@@ -521,12 +598,12 @@ export function removeNode(docx, path) {
 }
 
 // 移动节点到 parentPath 下（默认末尾；保持 body 末尾 sectPr 在最后）。
-export function moveNode(docx, path, parentPath, position = 'end') {
-  const { node, parent } = modelModule.resolvePath(docx, path);
+export function moveNode(docx: Docx, path: string, parentPath: string, position: AddPosition = 'end'): { moved: true } {
+  const { node, parent } = resolvePath(docx, path);
   if (!parent) throw new Error('不能移动根元素');
   const srcArr = childrenOf(parent);
   srcArr.splice(srcArr.indexOf(node), 1);
-  const { node: newParent } = modelModule.resolvePath(docx, parentPath);
+  const { node: newParent } = resolvePath(docx, parentPath);
   const dstArr = childrenOf(newParent);
   if (position === 'start') dstArr.unshift(node);
   else {

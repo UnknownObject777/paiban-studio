@@ -19,7 +19,7 @@ const DECL = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n';
 const W_NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"';
 
 function makeDocx() {
-  const p = (t) => `<w:p><w:r><w:t xml:space="preserve">${t}</w:t></w:r></w:p>`;
+  const p = (t: string) => `<w:p><w:r><w:t xml:space="preserve">${t}</w:t></w:r></w:p>`;
   const zip = new PizZip();
   zip.file('[Content_Types].xml', DECL + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>');
   zip.file('_rels/.rels', DECL + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>');
@@ -60,7 +60,7 @@ test('agent 用工具完成"标题改黑体三号居中"并落到文档', { skip
     const versions = ws.listVersions(docId);
     assert.ok(versions.length >= 2, '应产生新版本');
     const doc = openDocx(ws.getDocumentBuffer(docId));
-    const docEl = doc.parts.get('word/document.xml').tree.find((n) => isElement(n, 'w:document'));
+    const docEl = doc.parts.get('word/document.xml')!.tree!.find((n) => isElement(n, 'w:document'));
     const body = findChild(docEl, 'w:body');
     const p1 = findChildren(body, 'w:p')[0];
     const pPr = findChild(p1, 'w:pPr');

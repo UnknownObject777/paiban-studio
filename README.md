@@ -8,10 +8,13 @@
 
 ```bash
 npm install        # 安装依赖（Electron / pi SDK / docx 内核）
-npm test           # 单元 + 回归测试（node:test，37 用例）
+npm run build      # tsc 编译 TypeScript → dist/（start/test/preview 会自动先 build）
+npm test           # 单元 + 回归测试（node:test，54 用例：53 通过 + 1 真实 LLM 默认跳过）
 npm start          # 启动 Electron 开发模式（三栏工作台）
 npm run preview    # 规则集组件画廊预览页 → http://localhost:4173/preview/ruleset-gallery.html
 ```
+
+> 全项目 **TypeScript**（strict + NodeNext）：源码在 `src/**/*.ts`，`tsc` 编译到 `dist/`；Electron 主进程与 preview 服务均从 `dist/` 加载编译产物。
 
 ## 状态 · MVP 进度边界
 
@@ -21,7 +24,8 @@ MVP 规格已确认（2026-08-02，`docs/mvp-spec.md`），进度边界如下（
 |---|---|---|
 | 模板规则集原型（issue #1） | ✅ 已完成（`main`） | 识别/样式两文件 schema + 组件画廊预览页 |
 | round-trip 保真 spike（MVP 第一里程碑） | ✅ 已达成 | `test/fixtures/` 19 份真实 Word/WPS 产出样本，未编辑 round-trip 逐部件无损 + build 幂等 |
-| 核心五模块（issue #2） | ✅ 已实现并合入 `main` | 编辑内核 / 存储版本链 / 模板层 / agent 接入 / 三栏 UI，37 用例（36 通过、1 真实 LLM e2e 默认跳过） |
+| 核心五模块（issue #2） | ✅ 已实现并合入 `main` | 编辑内核 / 存储版本链 / 模板层 / agent 接入 / 三栏 UI，54 用例（53 通过、1 真实 LLM e2e 默认跳过） |
+| TypeScript 迁移（issue #12） | ✅ 已合入 | 全量 TS（src/test/preview）+ tsc 构建链路，类型检查 0 错误 |
 | 真实 LLM 链路测试 | ⏳ 待做 | `PAIBAN_E2E=1` + 模型凭证启用（默认跳过）；mock LLM 全链路已在默认套件覆盖 |
 | Word/WPS 双端人工验证 | ⏳ 待做 | 发布前人工打开确认版式一致（spec 首要风险收口） |
 | electron-builder 打包分发 | ⏳ 待做 | 三平台（Win NSIS / macOS DMG / Kylin AppImage） |
@@ -43,7 +47,7 @@ MVP 边界（In / Out of Scope 精简版，完整版见 `docs/mvp-spec.md`）：
 | Node.js | ≥ 22.19（`package.json` `engines` 强制） |
 | npm | 随 Node 分发（≥ 10） |
 | 平台 | Windows / macOS / Kylin（Linux，信创合规） |
-| Electron | ≥ 35（作为依赖安装，无需系统级安装） |
+| Electron | ≥ 43（作为依赖安装，无需系统级安装） |
 | 显示环境 | 常规运行需桌面环境；CI / 无显示环境用 headless 冒烟（见下） |
 
 ### 安装
@@ -65,7 +69,7 @@ npm test           # 全量测试
 
 ### 配置 LLM Provider
 
-配置优先级：**界面配置 > 环境变量 > 默认值**（`src/server/workspace.js`，R4）。默认值：`deepseek / deepseek-v4-flash`（凭证回落 `DEEPSEEK_API_KEY`）。
+配置优先级：**界面配置 > 环境变量 > 默认值**（`src/server/workspace.ts`，R4）。默认值：`deepseek / deepseek-v4-flash`（凭证回落 `DEEPSEEK_API_KEY`）。
 
 **方式一 · 环境变量**（适合 CI / 内网脚本）：
 
@@ -82,7 +86,7 @@ npm test           # 全量测试
 
 ### 数据目录与安全边界
 
-数据统一落在 Electron `userData/paiban-studio/`（`src/main.js`）：
+数据统一落在 Electron `userData/paiban-studio/`（`dist/src/main.js`，源码 `src/main.ts`）：
 
 ```
 <userData>/paiban-studio/
@@ -141,11 +145,11 @@ Electron 双进程 + IPC（R1：无本地 HTTP）。主进程跑 agent 编排 + 
 ```mermaid
 flowchart LR
   subgraph Main["主进程 (Node)"]
-    A[server/workspace.js<br/>服务层: 统一业务入口] --> B[docx-core<br/>编辑内核]
+    A[server/workspace.ts<br/>服务层: 统一业务入口] --> B[docx-core<br/>编辑内核]
     A --> C[storage<br/>对象存储 + 版本链]
     A --> D[templates<br/>模板库 + 规则集]
     E[agent-core<br/>pi SDK 内嵌] --> A
-    F[IPC handlers<br/>main.js] --> A
+    F[IPC handlers<br/>main.ts] --> A
   end
   subgraph Renderer["渲染进程"]
     G[public/index.html<br/>三栏 UI] --> H[preview.html<br/>docx-preview iframe]
@@ -159,25 +163,26 @@ flowchart LR
 ### 目录结构
 
 ```
-src/
-├── main.js               # Electron 主进程：窗口 / IPC 注册 / agent 初始化 / headless 冒烟
-├── preload.mjs           # contextBridge 白名单 API（paiban.*）
-├── server/workspace.js   # 服务层：文档/版本/模板/配置统一入口（headless 可测）
+src/                      # TypeScript 源码（tsc 编译到 dist/）
+├── main.ts               # Electron 主进程：窗口 / IPC 注册 / agent 初始化 / headless 冒烟
+├── preload.mts           # contextBridge 白名单 API（paiban.*；编译为 preload.mjs）
+├── server/workspace.ts   # 服务层：文档/版本/模板/配置统一入口（headless 可测）
 ├── docx-core/            # 编辑内核（唯一 seam applyEdits 所在）
-│   ├── applyEdits.js     #   seam + 命令分派 + 生成后自检
-│   ├── primitives.js     #   段落/run/节属性、findReplace、结构原语
-│   ├── numbering.js      #   numbering.xml 多级编号封装
-│   ├── model.js          #   路径寻址（/body/p[N]/r[M]）
-│   ├── ooxml.js          #   OOXML 元素工具
-│   ├── docx.js           #   部件容器 open/toBuffer/markDirty
-│   └── xml.js            #   preserveOrder 解析 / 保序序列化（round-trip 关键）
+│   ├── applyEdits.ts     #   seam + 命令分派 + 生成后自检
+│   ├── primitives.ts     #   段落/run/节属性、findReplace、结构原语
+│   ├── numbering.ts      #   numbering.xml 多级编号封装
+│   ├── model.ts          #   路径寻址（/body/p[N]/r[M]）
+│   ├── ooxml.ts          #   OOXML 元素工具
+│   ├── docx.ts           #   部件容器 open/toBuffer/markDirty
+│   └── xml.ts            #   preserveOrder 解析 / 保序序列化（round-trip 关键）
 ├── storage/              # objectStore(sha256) + versionStore(版本链)
 ├── templates/            # 上传→解析→规则集反推→实例化
 ├── agent-core/           # bridge(pi SDK) + tools(4 自研工具)
 └── ruleset/              # 规则集 schema（Node/浏览器共用校验）
-public/                   # 无框架三栏前端（HTML/CSS/JS）
+dist/                     # tsc 构建产物（主进程/preview 从 dist 加载；.gitignore 排除）
+public/                   # 无框架三栏前端（HTML/CSS/JS，纯浏览器脚本不迁移 TS）
 templates/rulesets/       # 内置公文默认规则集（gongwen-default）
-test/                     # node:test 用例 + fixtures/ 19 份真实样本
+test/                     # node:test 用例（TS 源码）+ fixtures/ 19 份真实样本
 ```
 
 ### 唯一 seam：`applyEdits(docxBuffer, commands)`
@@ -210,12 +215,12 @@ const { buffer, result } = applyEdits(docxBuffer, commands);
 
 | 模块 | 覆盖 |
 |---|---|
-| `test/roundtrip.test.js` | 第一里程碑：19 份真实样本 round-trip 无损 + build 幂等 + dirty 语义 |
-| `test/edits.test.js` | 8 类命令原语行为 + 错误处理 + 生成后自检 |
-| `test/storage.test.js` | 快照幂等 / 回滚语义 / 内容寻址去重 |
-| `test/templates.test.js` | 占位符提取 / 规则集反推 / 实例化 / 规则集→命令 |
-| `test/workspace.test.js` | service 级端到端 + 配置优先级 + agent 工具链（无 LLM） |
-| `test/e2e-agent.test.js` | 真实 LLM 链路（`PAIBAN_E2E=1` 启用，默认跳过） |
+| `test/roundtrip.test.ts` | 第一里程碑：19 份真实样本 round-trip 无损 + build 幂等 + dirty 语义 |
+| `test/edits.test.ts` | 8 类命令原语行为 + 错误处理 + 生成后自检 |
+| `test/storage.test.ts` | 快照幂等 / 回滚语义 / 内容寻址去重 |
+| `test/templates.test.ts` | 占位符提取 / 规则集反推 / 实例化 / 规则集→命令 |
+| `test/workspace.test.ts` | service 级端到端 + 配置优先级 + agent 工具链（无 LLM） |
+| `test/e2e-agent.test.ts` | 真实 LLM 链路（`PAIBAN_E2E=1` 启用，默认跳过） |
 
 回归集要求：内置真实 Word/WPS 产出的 `.docx` 样本，round-trip 后重解析校验 + docx-preview 渲染冒烟；发布前双端人工打开验证。
 
@@ -229,7 +234,7 @@ const { buffer, result } = applyEdits(docxBuffer, commands);
 
 ### MVP 边界（开发注意）
 
-- 新增命令/原语时，先看 `applyEdits` 分派表与 `primitives.js`，尽量复用现有原语组合，避免绕过 seam 直接改 XML。
+- 新增命令/原语时，先看 `applyEdits` 分派表与 `primitives.ts`，尽量复用现有原语组合，避免绕过 seam 直接改 XML。
 - 涉及 `numbering.xml` 的改动是 spec 标记的首要风险之一，必须补 round-trip 回归。
 - 前端遵循 Figma design system（`docs/design/figma/DESIGN.md`）：界面 chrome 严格黑白、pill/圆形几何、8px 间距体系、`dashed 2px` focus outline。动手前先读全文。
 
@@ -247,7 +252,7 @@ const { buffer, result } = applyEdits(docxBuffer, commands);
 
 ## 技术决策速览
 
-- **形态**：Electron ≥ 35 桌面应用（Node ≥ 22.19），无框架纯 HTML/CSS/JS 三栏前端，IPC 通信
+- **形态**：Electron ≥ 43 桌面应用（Node ≥ 22.19），主进程/服务层/测试全 TypeScript（tsc → dist/），无框架纯 HTML/CSS/JS 三栏前端，IPC 通信
 - **编辑层**：pizzip + fast-xml-parser@5（preserveOrder）+ 自研薄文档模型层，唯一 seam `applyEdits(buffer, commands)`
 - **agent**：@earendil-works/pi-coding-agent SDK 主进程内嵌，自研四工具（doc_outline / doc_edit / template_read / version_store）
 - **预览**：docx-preview@0.4 渲染进程 iframe，端到端 0.3–0.7s

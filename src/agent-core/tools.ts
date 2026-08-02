@@ -1,4 +1,4 @@
-// agent-core/tools.js — 自研 agent 工具（spec 模块 2）。
+// agent-core/tools.ts — 自研 agent 工具（spec 模块 2）。
 //
 // 三工具（+ 结构 dump 工具）全部收敛到 Workspace 服务层：
 //   doc_outline    文档结构 dump（dump → batch 往返的 dump 端，D6）
@@ -10,13 +10,44 @@
 // 所有写工具 executionMode: 'sequential'（R1：串行执行，防并发写同一文档）。
 // 内置文件工具（read/bash/edit/write）不入白名单——agent 只能经这些工具改文档。
 
-const COMMANDS_SCHEMA = {
+import type { Workspace } from '../server/workspace.js';
+
+/** 工具 schema（纯 JSON Schema 对象，SDK 运行时接受）。 */
+export interface AgentToolParameters {
+  type?: string;
+  properties?: Record<string, unknown>;
+  required?: string[];
+  description?: string;
+  items?: Record<string, unknown>;
+  enum?: unknown[];
+  additionalProperties?: boolean;
+}
+
+/** 本地工具接口（与 SDK ToolDefinition 结构对齐，schema 部分用纯 JSON）。 */
+export interface AgentTool {
+  name: string;
+  label: string;
+  description: string;
+  promptSnippet?: string;
+  promptGuidelines?: string[];
+  parameters: AgentToolParameters;
+  executionMode?: string;
+  execute(id: string, params: Record<string, any>): Promise<AgentToolResult>;
+}
+
+export interface AgentToolResult {
+  content: Array<{ type: string; text: string }>;
+  details: unknown;
+  isError: boolean;
+}
+
+const COMMANDS_SCHEMA: AgentToolParameters = {
   type: 'array',
   description: '编辑命令数组，按顺序原子应用。协议：{command:"set",path,props}|{command:"set",match:{text},props}|{command:"add",parent,node,position}|{command:"remove",path}|{command:"move",path,parent}|{command:"findReplace",find,replace}|{command:"normalize",ruleset}|{command:"numbering",action,...}|{command:"pageNumber",action:"footer"}',
   items: { type: 'object', additionalProperties: true },
 };
 
-export function createTools(workspace) {
+export function createTools(workspace: Workspace): AgentTool[] {
   return [
     {
       name: 'doc_outline',
@@ -36,7 +67,7 @@ export function createTools(workspace) {
         required: ['docId'],
       },
       executionMode: 'sequential',
-      async execute(_id, params) {
+      async execute(_id: string, params: Record<string, any>) {
         const outline = workspace.getOutline(params.docId, { textPreview: params.textPreview });
         return jsonResult(outline);
       },
@@ -63,7 +94,7 @@ export function createTools(workspace) {
         required: ['docId', 'commands'],
       },
       executionMode: 'sequential',
-      async execute(_id, params) {
+      async execute(_id: string, params: Record<string, any>) {
         if (!Array.isArray(params.commands) || !params.commands.length) {
           return jsonResult({ error: 'commands 必须是非空数组' }, true);
         }
@@ -94,7 +125,7 @@ export function createTools(workspace) {
         },
       },
       executionMode: 'sequential',
-      async execute(_id, params) {
+      async execute(_id: string, params: Record<string, any>) {
         if (!params.templateId) {
           return jsonResult({ templates: workspace.listTemplates() });
         }
@@ -124,7 +155,7 @@ export function createTools(workspace) {
         required: ['action', 'docId'],
       },
       executionMode: 'sequential',
-      async execute(_id, params) {
+      async execute(_id: string, params: Record<string, any>) {
         if (params.action === 'list') {
           return jsonResult({ versions: workspace.listVersions(params.docId) });
         }
@@ -138,7 +169,7 @@ export function createTools(workspace) {
   ];
 }
 
-function jsonResult(data, isError = false) {
+function jsonResult(data: unknown, isError = false): AgentToolResult {
   return {
     content: [{ type: 'text', text: JSON.stringify(data, null, 2) }],
     details: data,

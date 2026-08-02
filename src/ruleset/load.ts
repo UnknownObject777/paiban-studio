@@ -6,9 +6,10 @@ import path from 'node:path';
 
 import { validateRuleset } from './schema.js';
 import { COMPONENTS } from './components.js';
+import type { ComponentDef } from './components.js';
 
-function readJson(filePath) {
-  let raw;
+function readJson(filePath: string): unknown {
+  let raw: string;
   try {
     raw = fs.readFileSync(filePath, 'utf8');
   } catch {
@@ -17,21 +18,28 @@ function readJson(filePath) {
   try {
     return JSON.parse(raw);
   } catch (err) {
-    throw new Error(`${path.basename(filePath)} 不是合法 JSON：${err.message}`);
+    throw new Error(`${path.basename(filePath)} 不是合法 JSON：${(err as Error).message}`);
   }
+}
+
+export interface LoadedRuleset {
+  /** 规则集 JSON 数据（运行时对象，宽松类型便于组件键/样式访问）。 */
+  recognizers: Record<string, any>;
+  styles: Record<string, any>;
+  components: readonly ComponentDef[];
 }
 
 /**
  * 加载并校验一个规则集目录。
- * @param {string} dir 含 recognizers.json 与 styles.json 的目录
- * @returns {{ recognizers: object, styles: object, components: typeof COMPONENTS }}
+ * @param dir 含 recognizers.json 与 styles.json 的目录
+ * @returns 校验通过的两文件对象 + 组件清单常量
  */
-export function loadRuleset(dir) {
+export function loadRuleset(dir: string): LoadedRuleset {
   const recognizers = readJson(path.join(dir, 'recognizers.json'));
   const styles = readJson(path.join(dir, 'styles.json'));
   const errors = validateRuleset(recognizers, styles);
   if (errors.length > 0) {
     throw new Error(`规则集校验失败（${dir}）：\n- ${errors.join('\n- ')}`);
   }
-  return { recognizers, styles, components: COMPONENTS };
+  return { recognizers: recognizers as Record<string, any>, styles: styles as Record<string, any>, components: COMPONENTS };
 }

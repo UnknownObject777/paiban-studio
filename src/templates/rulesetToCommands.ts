@@ -1,4 +1,4 @@
-// templates/rulesetToCommands.js — 两文件规则集（recognizers.json + styles.json）
+// templates/rulesetToCommands.ts — 两文件规则集（recognizers.json + styles.json）
 // 转编辑内核命令（normalize 规则 + 页面设置），模板层与编辑内核之间的翻译器。
 //
 // 组件顺序（首个命中者生效，特殊→兜底）：
@@ -6,10 +6,44 @@
 //   → attachment(regex) → body(fallback)
 // page 节 → set /body/sectPr（margins/pageSize）+ pageNumber footer。
 
+import type { ParagraphProps, RunProps } from '../docx-core/primitives.js';
+import type { EditCommand } from '../docx-core/applyEdits.js';
+
+/** normalize 规则（与 applyEdits 中 applyNormalize 的结构对齐）。 */
+export interface NormalizeRule {
+  name: string;
+  match?: { text?: string; notText?: string; position?: string; fallback?: boolean };
+  set?: { paragraph?: ParagraphProps; run?: RunProps };
+  _re?: RegExp | null;
+  _notRe?: RegExp | null;
+}
+
+export interface RulesetStyle {
+  align?: string;
+  firstLineIndentChars?: number;
+  lineSpacingPt?: number;
+  lineSpacingMultiple?: number;
+  spaceBeforePt?: number;
+  spaceAfterPt?: number;
+  pageBreakBefore?: boolean;
+  outlineLevel?: number;
+  fontEastAsia?: string;
+  fontAscii?: string;
+  sizePt?: number;
+  bold?: boolean;
+  italic?: boolean;
+  [key: string]: unknown;
+}
+
+export interface KernelProps {
+  paragraph: ParagraphProps;
+  run: RunProps;
+}
+
 // styles.json 组件样式 → 内核 paragraph/run props
-export function styleToKernelProps(style, { forHeading = false } = {}) {
-  const paragraph = {};
-  const run = {};
+export function styleToKernelProps(style: RulesetStyle, { forHeading = false }: { forHeading?: boolean } = {}): KernelProps {
+  const paragraph: ParagraphProps = {};
+  const run: RunProps = {};
   if (style.align !== undefined) paragraph.align = style.align; // 内核 ALIGN_MAP 处理 justify→both
   if (style.firstLineIndentChars !== undefined) paragraph.firstLineChars = style.firstLineIndentChars * 100;
   if (style.lineSpacingPt !== undefined) paragraph.lineSpacingPt = style.lineSpacingPt;
@@ -27,8 +61,29 @@ export function styleToKernelProps(style, { forHeading = false } = {}) {
   return { paragraph, run };
 }
 
+interface RecognizerEntry {
+  type?: string;
+  pattern?: string;
+  where?: string;
+  params?: { component?: string };
+  [key: string]: unknown;
+}
+
+interface Recognizer {
+  fallback?: boolean;
+  match?: RecognizerEntry[];
+  [key: string]: unknown;
+}
+
+interface NormalizeMatch {
+  text?: string;
+  notText?: string;
+  position?: string;
+  fallback?: boolean;
+}
+
 // recognizers 中取某组件的首个可用内核 match（regex → text；position/heuristic → 位置谓词或 null）
-function recognizerToMatch(componentId, recognizer) {
+function recognizerToMatch(componentId: string, recognizer: Recognizer | undefined): NormalizeMatch | null {
   if (!recognizer) return null;
   if (recognizer.fallback) return { fallback: true };
   for (const entry of recognizer.match || []) {
@@ -43,43 +98,46 @@ function recognizerToMatch(componentId, recognizer) {
 }
 
 // 组件应用顺序：特殊规则在前，兜底在后
-const RULE_ORDER = ['title', 'subtitle', 'heading1', 'heading2', 'heading3', 'heading4', 'caption', 'attachment', 'body'];
+const RULE_ORDER: readonly string[] = ['title', 'subtitle', 'heading1', 'heading2', 'heading3', 'heading4', 'caption', 'attachment', 'body'];
 
 /**
  * 规则集 → 内核命令数组。
- * @returns {Array} [normalize 命令, （可选）页面设置命令, （可选）页码命令]
+ * @returns [normalize 命令, （可选）页面设置命令, （可选）页码命令]
  */
-export function rulesetToCommands(recognizers, styles) {
+export function rulesetToCommands(
+  recognizers: Record<string, any>,
+  styles: Record<string, any>,
+): EditCommand[] {
   // 副标题守卫：position 规则（after:title）不能吞噬形似标题的段落
   const headingPatterns = ['heading1', 'heading2', 'heading3', 'heading4']
-    .map((id) => (recognizers.components?.[id]?.match || []).find((e) => e.type === 'regex')?.pattern)
+    .map((id) => (recognizers.components?.[id]?.match || []).find((e: RecognizerEntry) => e.type === 'regex')?.pattern)
     .filter(Boolean)
-    .map((p) => `(?:${p.replace(/^\^/, '')})`);
+    .map((p: string) => `(?:${p.replace(/^\^/, '')})`);
   const headingGuard = headingPatterns.length ? `^(?:${headingPatterns.join('|')})` : null;
 
-  const rules = [];
+  const rules: NormalizeRule[] = [];
   for (const id of RULE_ORDER) {
-    const style = styles.components?.[id];
+    const style = styles.components?.[id] as RulesetStyle | undefined;
     if (!style) continue;
-    const match = recognizerToMatch(id, recognizers.components?.[id]);
+    const match = recognizerToMatch(id, recognizers.components?.[id] as Recognizer | undefined);
     if (!match) continue; // 该组件无可执行识别规则 → 本轮 normalize 不处理
     if (id === 'subtitle' && headingGuard && match.position) {
       match.notText = headingGuard;
     }
     const { paragraph, run } = styleToKernelProps(style);
-    const rule = { name: id, match, set: {} };
-    if (Object.keys(paragraph).length) rule.set.paragraph = paragraph;
-    if (Object.keys(run).length) rule.set.run = run;
+    const rule: NormalizeRule = { name: id, match: match as NormalizeRule['match'], set: {} };
+    if (Object.keys(paragraph).length) rule.set!.paragraph = paragraph;
+    if (Object.keys(run).length) rule.set!.run = run;
     rules.push(rule);
   }
 
-  const commands = [];
+  const commands: EditCommand[] = [];
   if (rules.length) commands.push({ command: 'normalize', ruleset: { rules } });
 
   // 页面设置
-  const page = styles.page;
+  const page = styles.page as Record<string, any> | undefined;
   if (page) {
-    const props = {};
+    const props: Record<string, any> = {};
     if (page.paper && page.paper !== 'preserve' && page.paper !== 'custom') {
       props.pageSize = page.paper.toLowerCase();
     }

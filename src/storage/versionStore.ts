@@ -1,4 +1,4 @@
-// storage/versionStore.js — 文档版本链（spec 模块 3）。
+// storage/versionStore.ts — 文档版本链（spec 模块 3）。
 //
 // 语义（对应测试策略"快照幂等 / 回滚语义 / 内容寻址去重"）：
 //   - createDocument(buffer, meta)  新建工作文档，初始版本 v1
@@ -8,33 +8,61 @@
 //
 // 布局：<baseDir>/docs/<docId>/versions.json + 内容存 ObjectStore（跨文档去重）。
 
-import { mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync, renameSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import type { LocalFsObjectStore, DocxInput } from './objectStore.js';
+
+export interface VersionEntry {
+  id: string;
+  hash: string;
+  parent: string | null;
+  at: string;
+  source: string;
+  note?: string;
+}
+
+export interface DocChain {
+  docId: string;
+  name: string;
+  meta: Record<string, unknown>;
+  createdAt: string;
+  versions: VersionEntry[];
+}
+
+export interface SnapshotResult {
+  version: VersionEntry;
+  created: boolean;
+  rolledBackTo?: string;
+}
 
 export class VersionStore {
-  constructor(baseDir, objectStore) {
+  baseDir: string;
+  store: LocalFsObjectStore;
+  docsDir: string;
+
+  constructor(baseDir: string, objectStore: LocalFsObjectStore) {
     this.baseDir = baseDir;
     this.store = objectStore;
     this.docsDir = join(baseDir, 'docs');
     mkdirSync(this.docsDir, { recursive: true });
   }
 
-  _chainPath(docId) {
+  _chainPath(docId: string): string {
     return join(this.docsDir, docId, 'versions.json');
   }
 
-  _load(docId) {
+  _load(docId: string): DocChain {
     const p = this._chainPath(docId);
     if (!existsSync(p)) {
-      const err = new Error(`文档不存在: ${docId}`);
+      const err = new Error(`文档不存在: ${docId}`) as Error & { code?: string };
       err.code = 'DOC_NOT_FOUND';
       throw err;
     }
-    return JSON.parse(readFileSync(p, 'utf8'));
+    return JSON.parse(readFileSync(p, 'utf8')) as DocChain;
   }
 
-  _save(docId, chain) {
+  _save(docId: string, chain: DocChain): void {
     const dir = join(this.docsDir, docId);
     mkdirSync(dir, { recursive: true });
     const p = this._chainPath(docId);
@@ -44,19 +72,19 @@ export class VersionStore {
   }
 
   /** 新建工作文档。meta: { name, origin: 'upload'|'template', ... } */
-  createDocument(buffer, meta = {}) {
+  createDocument(buffer: DocxInput, meta: Record<string, unknown> = {}): { docId: string; version: VersionEntry } {
     const docId = randomUUID().slice(0, 8);
     const hash = this.store.put(buffer);
-    const chain = {
+    const chain: DocChain = {
       docId,
-      name: meta.name || docId,
+      name: (meta.name as string) || docId,
       meta,
       createdAt: new Date().toISOString(),
       versions: [{
         id: 'v1', hash, parent: null,
         at: new Date().toISOString(),
-        source: meta.origin || 'upload',
-        note: meta.note || '初始版本',
+        source: (meta.origin as string) || 'upload',
+        note: (meta.note as string) || '初始版本',
       }],
     };
     this._save(docId, chain);
@@ -66,14 +94,14 @@ export class VersionStore {
   /**
    * 快照。幂等：内容与 head 相同（hash 一致）→ 不产生新版本，返回 { version: head, created: false }。
    */
-  snapshot(docId, buffer, { source = 'edit', note = '' } = {}) {
+  snapshot(docId: string, buffer: DocxInput, { source = 'edit', note = '' }: { source?: string; note?: string } = {}): SnapshotResult {
     const chain = this._load(docId);
     const headV = chain.versions[chain.versions.length - 1];
     const hash = this.store.put(buffer);
     if (hash === headV.hash) {
       return { version: headV, created: false };
     }
-    const version = {
+    const version: VersionEntry = {
       id: 'v' + (chain.versions.length + 1),
       hash,
       parent: headV.id,
@@ -87,11 +115,11 @@ export class VersionStore {
   }
 
   /** 回滚到历史版本：记录为新版本（hash 指向历史内容）。 */
-  rollback(docId, versionId, { note } = {}) {
+  rollback(docId: string, versionId: string, { note }: { note?: string } = {}): SnapshotResult {
     const chain = this._load(docId);
     const target = chain.versions.find((v) => v.id === versionId);
     if (!target) {
-      const err = new Error(`版本不存在: ${docId}@${versionId}`);
+      const err = new Error(`版本不存在: ${docId}@${versionId}`) as Error & { code?: string };
       err.code = 'VERSION_NOT_FOUND';
       throw err;
     }
@@ -99,7 +127,7 @@ export class VersionStore {
     if (target.hash === headV.hash) {
       return { version: headV, created: false, rolledBackTo: versionId };
     }
-    const version = {
+    const version: VersionEntry = {
       id: 'v' + (chain.versions.length + 1),
       hash: target.hash,
       parent: headV.id,
@@ -112,23 +140,23 @@ export class VersionStore {
     return { version, created: true, rolledBackTo: versionId };
   }
 
-  list(docId) {
+  list(docId: string): VersionEntry[] {
     return this._load(docId).versions;
   }
 
-  head(docId) {
+  head(docId: string): VersionEntry {
     const vs = this.list(docId);
     return vs[vs.length - 1];
   }
 
   /** 取文档内容（默认 head）。 */
-  getBuffer(docId, versionId = undefined) {
+  getBuffer(docId: string, versionId?: string): Buffer {
     const chain = this._load(docId);
     const v = versionId
       ? chain.versions.find((x) => x.id === versionId)
       : chain.versions[chain.versions.length - 1];
     if (!v) {
-      const err = new Error(`版本不存在: ${docId}@${versionId}`);
+      const err = new Error(`版本不存在: ${docId}@${versionId}`) as Error & { code?: string };
       err.code = 'VERSION_NOT_FOUND';
       throw err;
     }
@@ -136,7 +164,7 @@ export class VersionStore {
   }
 
   /** 列出全部工作文档（摘要）。 */
-  listDocuments() {
+  listDocuments(): Array<{ docId: string; name: string; meta: Record<string, unknown>; createdAt: string; head: string; versionCount: number }> {
     if (!existsSync(this.docsDir)) return [];
     return readdirSync(this.docsDir, { withFileTypes: true })
       .filter((d) => d.isDirectory())
@@ -153,13 +181,12 @@ export class VersionStore {
           return null;
         }
       })
-      .filter(Boolean);
+      .filter((x): x is NonNullable<typeof x> => x !== null);
   }
 }
 
 // renameSync 跨平台小封装（Windows 上目标存在时 rename 会失败，先删）
-import { renameSync, rmSync } from 'node:fs';
-function renameSyncSafe(tmp, target) {
+function renameSyncSafe(tmp: string, target: string): void {
   try {
     renameSync(tmp, target);
   } catch {

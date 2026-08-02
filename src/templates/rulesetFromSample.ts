@@ -1,4 +1,4 @@
-// templates/rulesetFromSample.js — 从样例 docx 反推规则集（spec 模块 4：规则集抽取，
+// templates/rulesetFromSample.ts — 从样例 docx 反推规则集（spec 模块 4：规则集抽取，
 // MVP 先做"标题 / 正文 / 页边距"最常用组件，完整组件抽取随 #5 原型迭代）。
 //
 // 反推策略（保守、可解释）：
@@ -14,16 +14,21 @@ import { findChild, findChildren, getAttr, childrenOf, tagOf } from '../docx-cor
 import { loadRuleset } from '../ruleset/load.js';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
+import { existsSync } from 'node:fs';
+import type { XmlNode } from '../docx-core/xml.js';
 
-const DEFAULT_RULESET_DIR = join(
-  fileURLToPath(new URL('.', import.meta.url)),
-  '../../templates/rulesets/gongwen-default',
-);
+// 默认规则集目录：相对本模块定位项目根 templates/。
+// 源码位于 src/templates/（上两级）；编译产物位于 dist/src/templates/（上三级）。
+const HERE = fileURLToPath(new URL('.', import.meta.url));
+const DEFAULT_RULESET_DIR = [
+  join(HERE, '../../templates/rulesets/gongwen-default'),
+  join(HERE, '../../../templates/rulesets/gongwen-default'),
+].find((p) => existsSync(p)) || join(HERE, '../../templates/rulesets/gongwen-default');
 
-function plainText(pNode) {
+function plainText(pNode: XmlNode): string {
   let out = '';
-  const visit = (n) => {
-    for (const c of (n[tagOf(n)] || []) ) {
+  const visit = (n: XmlNode): void => {
+    for (const c of childrenOf(n)) {
       if (c['#text'] !== undefined) out += c['#text'];
       else visit(c);
     }
@@ -32,11 +37,25 @@ function plainText(pNode) {
   return out;
 }
 
-const num = (v) => (v === undefined || v === null ? undefined : Number(v));
+const num = (v: string | number | undefined): number | undefined =>
+  v === undefined || v === null ? undefined : Number(v);
+
+/** 反推出的组件样式（仅含从样例实测到的键）。 */
+interface ExtractedStyle {
+  align?: string;
+  lineSpacingPt?: number;
+  lineSpacingMultiple?: number;
+  firstLineIndentChars?: number;
+  fontEastAsia?: string;
+  fontAscii?: string;
+  sizePt?: number;
+  bold?: boolean;
+  [key: string]: unknown;
+}
 
 // 从段落读出组件样式（取首个含文本 run 的 rPr + pPr）
-function styleFromParagraph(pNode) {
-  const style = {};
+function styleFromParagraph(pNode: XmlNode): ExtractedStyle {
+  const style: ExtractedStyle = {};
   const pPr = findChild(pNode, 'w:pPr');
   if (pPr) {
     const jc = findChild(pPr, 'w:jc');
@@ -45,12 +64,12 @@ function styleFromParagraph(pNode) {
     if (spacing && getAttr(spacing, 'w:line')) {
       const rule = getAttr(spacing, 'w:lineRule');
       const line = num(getAttr(spacing, 'w:line'));
-      if (rule === 'exact' || rule === 'atLeast') style.lineSpacingPt = line / 20;
+      if (rule === 'exact' || rule === 'atLeast') style.lineSpacingPt = line! / 20;
       else if (line) style.lineSpacingMultiple = line / 240;
     }
     const ind = findChild(pPr, 'w:ind');
     if (ind && getAttr(ind, 'w:firstLineChars') !== undefined) {
-      style.firstLineIndentChars = num(getAttr(ind, 'w:firstLineChars')) / 100;
+      style.firstLineIndentChars = num(getAttr(ind, 'w:firstLineChars'))! / 100;
     }
   }
   for (const r of findChildren(pNode, 'w:r')) {
@@ -64,7 +83,7 @@ function styleFromParagraph(pNode) {
       if (getAttr(fonts, 'w:ascii')) style.fontAscii = getAttr(fonts, 'w:ascii');
     }
     const sz = findChild(rPr, 'w:sz');
-    if (sz) style.sizePt = num(getAttr(sz, 'w:val')) / 2;
+    if (sz) style.sizePt = num(getAttr(sz, 'w:val'))! / 2;
     const b = findChild(rPr, 'w:b');
     if (b) style.bold = getAttr(b, 'w:val') !== 'false';
     break; // 只取首个含文本 run
@@ -72,25 +91,34 @@ function styleFromParagraph(pNode) {
   return style;
 }
 
+export interface ExtractOptions {
+  name?: string;
+  defaultRulesetDir?: string;
+}
+
+export interface ExtractResult {
+  recognizers: Record<string, unknown>;
+  styles: Record<string, any>;
+  extracted: string[];
+}
+
 /**
  * 从样例 docx 反推两文件规则集（title/body/page 实测 + 其余组件继承默认集）。
- * @param {Buffer} docxBuffer
- * @param {{ name?: string, defaultRulesetDir?: string }} opts
- * @returns {{ recognizers: object, styles: object, extracted: string[] }}
+ * @returns 反推出的规则集两文件对象 + 实测到的组件清单
  */
-export function extractRulesetFromSample(docxBuffer, opts = {}) {
+export function extractRulesetFromSample(docxBuffer: Buffer | ArrayBuffer | Uint8Array, opts: ExtractOptions = {}): ExtractResult {
   const name = opts.name || 'extracted';
   const defaults = loadRuleset(opts.defaultRulesetDir || DEFAULT_RULESET_DIR);
   const docx = openDocx(docxBuffer);
 
   // 收集段落快照
-  const paras = [];
+  const paras: Array<{ node: XmlNode; text: string }> = [];
   walkParagraphs(docx, (p) => paras.push({ node: p, text: plainText(p) }));
   const nonEmpty = paras.filter((x) => x.text.trim().length > 0);
-  const extracted = [];
+  const extracted: string[] = [];
 
-  const recognizers = JSON.parse(JSON.stringify(defaults.recognizers));
-  const styles = JSON.parse(JSON.stringify(defaults.styles));
+  const recognizers: Record<string, unknown> = JSON.parse(JSON.stringify(defaults.recognizers));
+  const styles: Record<string, any> = JSON.parse(JSON.stringify(defaults.styles));
   recognizers.ruleset = name;
   styles.ruleset = name;
 
@@ -111,19 +139,19 @@ export function extractRulesetFromSample(docxBuffer, opts = {}) {
   walkSections(docx, (sect) => {
     const pgSz = findChild(sect, 'w:pgSz');
     const pgMar = findChild(sect, 'w:pgMar');
-    const toCm = (tw) => Math.round((num(tw) / 566.929) * 100) / 100;
-    const page = { ...styles.page };
+    const toCm = (tw: number | undefined): number => Math.round((tw! / 566.929) * 100) / 100;
+    const page: Record<string, any> = { ...styles.page };
     if (pgSz && num(getAttr(pgSz, 'w:w')) === 11906) page.paper = 'A4';
     else page.paper = 'preserve';
     if (pgMar) {
       page.margins = {
-        topCm: toCm(getAttr(pgMar, 'w:top')),
-        bottomCm: toCm(getAttr(pgMar, 'w:bottom')),
-        leftCm: toCm(getAttr(pgMar, 'w:left')),
-        rightCm: toCm(getAttr(pgMar, 'w:right')),
+        topCm: toCm(num(getAttr(pgMar, 'w:top'))),
+        bottomCm: toCm(num(getAttr(pgMar, 'w:bottom'))),
+        leftCm: toCm(num(getAttr(pgMar, 'w:left'))),
+        rightCm: toCm(num(getAttr(pgMar, 'w:right'))),
       };
     }
-    if (pgMar && getAttr(pgMar, 'w:footer')) page.footerDistanceCm = toCm(getAttr(pgMar, 'w:footer'));
+    if (pgMar && getAttr(pgMar, 'w:footer')) page.footerDistanceCm = toCm(num(getAttr(pgMar, 'w:footer')));
     page.notes = '从样例 sectPr 反推';
     styles.page = page;
     extracted.push('page');

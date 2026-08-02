@@ -1,5 +1,5 @@
 // 组件画廊 + 页面线框渲染器
-// 读取两文件规则集（recognizers.json + styles.json），复用 schema.js 校验，
+// 读取两文件规则集（recognizers.json + styles.json），复用 schema.ts 校验，
 // 然后以真实字体/字号/行距渲染每个组件的样例文字，并绘制 A4 页面线框。
 
 import { COMPONENTS, PAGE_ID } from '../src/ruleset/components.js';
@@ -11,14 +11,14 @@ const PT_TO_PX = 96 / 72; // 1pt = 1.333px
 const CM_TO_PX = 96 / 2.54;
 
 // 纸张尺寸（cm）；paper=preserve 时预览按 A4 渲染
-const PAPER_SIZES = {
+const PAPER_SIZES: Record<string, { widthCm: number; heightCm: number }> = {
   A4: { widthCm: 21, heightCm: 29.7 },
   A3: { widthCm: 29.7, heightCm: 42 },
   A5: { widthCm: 14.8, heightCm: 21 },
   B5: { widthCm: 17.6, heightCm: 25 },
 };
 
-const STYLE_LABELS = {
+const STYLE_LABELS: Record<string, string> = {
   fontEastAsia: '中文字体',
   fontAscii: '西文字体',
   sizePt: '字号(pt)',
@@ -35,20 +35,20 @@ const STYLE_LABELS = {
   headerBold: '表头加粗',
 };
 
-function ptToPx(ptValue) {
+function ptToPx(ptValue: number): string {
   return `${(ptValue * PT_TO_PX).toFixed(2)}px`;
 }
 
-async function fetchJson(url) {
+async function fetchJson(url: string): Promise<any> {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`${url} → HTTP ${res.status}`);
   return res.json();
 }
 
-function summarizeMatch(match) {
+function summarizeMatch(match: any): string {
   if (!match) return 'fallback（未命中任何规则的段落）';
   return match
-    .map((rule) => {
+    .map((rule: any) => {
       if (rule.type === 'regex') return `regex ${rule.pattern}`;
       if (rule.type === 'position') return `position ${rule.where}`;
       return `heuristic ${rule.kind}`;
@@ -56,11 +56,11 @@ function summarizeMatch(match) {
     .join(' + ');
 }
 
-function paragraphSampleStyle(style) {
-  const css = {};
+function paragraphSampleStyle(style: any): Record<string, string> {
+  const css: Record<string, string> = {};
   if (style.fontEastAsia || style.fontAscii) {
     const families = [style.fontEastAsia, style.fontAscii].filter(Boolean);
-    css.fontFamily = families.map((f) => `"${f}"`).join(', ') + ', sans-serif';
+    css.fontFamily = families.map((f: string) => `"${f}"`).join(', ') + ', sans-serif';
   }
   if (style.sizePt) css.fontSize = ptToPx(style.sizePt);
   if (style.lineSpacingPt) css.lineHeight = ptToPx(style.lineSpacingPt);
@@ -72,19 +72,19 @@ function paragraphSampleStyle(style) {
   return css;
 }
 
-function applyStyle(el, css) {
-  for (const [key, value] of Object.entries(css)) el.style[key] = value;
+function applyStyle(el: HTMLElement, css: Record<string, string>): void {
+  for (const [key, value] of Object.entries(css)) (el.style as any)[key] = value;
 }
 
-function metaEntries(style) {
+function metaEntries(style: any): Array<[string, unknown]> {
   return Object.entries(style).filter(([key]) => key !== 'notes');
 }
 
-function renderCard(component, recognizer, style) {
+function renderCard(component: any, recognizer: any, style: any): HTMLElement {
   const card = document.createElement('article');
   card.className = 'card';
 
-  const badges = [];
+  const badges: string[] = [];
   if (recognizer.fallback) badges.push('<span class="card__badge">fallback</span>');
   if (style.pageBreakBefore) badges.push('<span class="card__badge">段前分页</span>');
 
@@ -138,7 +138,7 @@ function renderCard(component, recognizer, style) {
   return card;
 }
 
-function renderSampleTable(style) {
+function renderSampleTable(style: any): HTMLTableElement {
   const table = document.createElement('table');
   table.className = 'sample-table';
   const rows = [
@@ -161,8 +161,8 @@ function renderSampleTable(style) {
   return table;
 }
 
-function renderGallery(recognizers, styles) {
-  const gallery = document.getElementById('gallery');
+function renderGallery(recognizers: any, styles: any): void {
+  const gallery = document.getElementById('gallery')!;
   gallery.textContent = '';
   for (const component of COMPONENTS) {
     gallery.appendChild(
@@ -173,22 +173,22 @@ function renderGallery(recognizers, styles) {
 
 // ---------- 页面线框 ----------
 
-function pagePaper(styles) {
+function pagePaper(styles: any): { widthCm: number; heightCm: number; effective: string } {
   const page = styles[PAGE_ID];
   const key = page.paper === 'preserve' || page.paper === 'custom' ? 'A4' : page.paper;
   return { ...PAPER_SIZES[key], effective: key };
 }
 
-function renderWireframe(styles, parity) {
+function renderWireframe(styles: any, parity: 'odd' | 'even'): void {
   const page = styles[PAGE_ID];
   const { widthCm, heightCm, effective } = pagePaper(styles);
 
   const heightPx = 640;
   const scale = heightPx / (heightCm * CM_TO_PX);
   const widthPx = widthCm * CM_TO_PX * scale;
-  const cm = (v) => v * CM_TO_PX * scale; // 厘米 → 线框像素
+  const cm = (v: number): number => v * CM_TO_PX * scale; // 厘米 → 线框像素
 
-  const wf = document.getElementById('wireframe');
+  const wf = document.getElementById('wireframe')!;
   wf.textContent = '';
   wf.style.width = `${widthPx}px`;
   wf.style.height = `${heightPx}px`;
@@ -226,7 +226,7 @@ function renderWireframe(styles, parity) {
   pageno.style.fontSize = `${(pn.sizePt * PT_TO_PX * scale).toFixed(2)}px`;
   pageno.style.fontFamily = `"${pn.fontEastAsia}", serif`;
   pageno.style.bottom = `${cm(page.footerDistanceCm) - 16}px`;
-  const xByAlign = { left: '24px', right: `${widthPx - 56}px`, center: `${widthPx / 2 - 16}px` };
+  const xByAlign: Record<string, string> = { left: '24px', right: `${widthPx - 56}px`, center: `${widthPx / 2 - 16}px` };
   pageno.style.left = xByAlign[align] ?? xByAlign.center;
   wf.appendChild(pageno);
 
@@ -248,7 +248,7 @@ function renderWireframe(styles, parity) {
   }
 
   // 事实清单
-  const facts = [
+  const facts: Array<[string, string]> = [
     ['纸张', page.paper === 'preserve' ? `保留原纸张（预览按 ${effective}）` : page.paper],
     ['页面尺寸', `${widthCm} × ${heightCm} cm`],
     ['页边距', `上${m.topCm} / 下${m.bottomCm} / 左${m.leftCm} / 右${m.rightCm} cm`],
@@ -258,7 +258,7 @@ function renderWireframe(styles, parity) {
     ['偶数页页码', pn.evenAlign],
     ['页码字体', `${pn.fontEastAsia} ${pn.sizePt}pt`],
   ];
-  const ul = document.getElementById('page-facts');
+  const ul = document.getElementById('page-facts')!;
   ul.textContent = '';
   for (const [label, value] of facts) {
     const li = document.createElement('li');
@@ -268,21 +268,21 @@ function renderWireframe(styles, parity) {
     ul.appendChild(li);
   }
 
-  document.getElementById('paper-note').textContent =
+  document.getElementById('paper-note')!.textContent =
     page.paper === 'preserve' ? `paper=preserve（force_a4=false），线框按 ${effective} 渲染` : '';
 }
 
 // ---------- 装配 ----------
 
-function switchView(view) {
-  for (const name of ['gallery', 'page']) {
-    document.getElementById(`view-${name}`).classList.toggle('is-hidden', name !== view);
-    document.querySelector(`.tab[data-view="${name}"]`).classList.toggle('is-active', name === view);
+function switchView(view: 'gallery' | 'page'): void {
+  for (const name of ['gallery', 'page'] as const) {
+    document.getElementById(`view-${name}`)!.classList.toggle('is-hidden', name !== view);
+    document.querySelector(`.tab[data-view="${name}"]`)!.classList.toggle('is-active', name === view);
   }
 }
 
-async function main() {
-  const status = document.getElementById('status');
+async function main(): Promise<void> {
+  const status = document.getElementById('status')!;
   try {
     const [recognizers, styles] = await Promise.all([
       fetchJson(`${RULESET_DIR}/recognizers.json`),
@@ -293,7 +293,7 @@ async function main() {
       throw new Error(`规则集校验未通过：\n- ${errors.join('\n- ')}`);
     }
 
-    document.getElementById('ruleset-name').textContent =
+    document.getElementById('ruleset-name')!.textContent =
       `${recognizers.ruleset} · v${recognizers.version}`;
     status.textContent = `${COMPONENTS.length} 个组件 · 两文件一致性校验通过`;
     setTimeout(() => status.classList.add('is-hidden'), 2400);
@@ -302,17 +302,17 @@ async function main() {
     renderWireframe(styles, 'odd');
 
     document.querySelectorAll('.tab').forEach((tab) =>
-      tab.addEventListener('click', () => switchView(tab.dataset.view)),
+      tab.addEventListener('click', () => switchView((tab as HTMLElement).dataset.view as 'gallery' | 'page')),
     );
     document.querySelectorAll('.pill').forEach((pill) =>
       pill.addEventListener('click', () => {
         document.querySelectorAll('.pill').forEach((p) => p.classList.toggle('is-active', p === pill));
-        renderWireframe(styles, pill.dataset.parity);
+        renderWireframe(styles, (pill as HTMLElement).dataset.parity as 'odd' | 'even');
       }),
     );
   } catch (err) {
     status.classList.add('status--error');
-    status.textContent = `加载失败：${err.message}\n\n请先用 npm run preview 启动本地服务（fetch 不支持 file:// 直开）。`;
+    status.textContent = `加载失败：${(err as Error).message}\n\n请先用 npm run preview 启动本地服务（fetch 不支持 file:// 直开）。`;
   }
 }
 

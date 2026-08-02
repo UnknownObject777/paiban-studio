@@ -11,14 +11,15 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readdirSync, readFileSync } from 'node:fs';
+import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseXml, buildXml } from '../src/docx-core/xml.js';
 import { openDocx, toBuffer, markDirty } from '../src/docx-core/docx.js';
 
-const __dirname = fileURLToPath(new URL('.', import.meta.url));
-const FIXTURES = join(__dirname, 'fixtures');
+// 回归样本目录：源码在 test/fixtures；编译产物在 dist/test/ 时回退到 test/fixtures。
+const HERE = fileURLToPath(new URL('.', import.meta.url));
+const FIXTURES = [join(HERE, 'fixtures'), join(HERE, '../../test/fixtures')].find((p) => existsSync(p))!;
 const samples = readdirSync(FIXTURES).filter((f) => f.endsWith('.docx'));
 
 test('回归集：全部样本未编辑 round-trip 后部件原样无损', () => {
@@ -41,8 +42,8 @@ test('回归集：全部样本未编辑 round-trip 后部件原样无损', () =>
         );
       } else {
         assert.deepEqual(
-          Buffer.from(next.bytes),
-          Buffer.from(part.bytes),
+          Buffer.from(next.bytes!),
+          Buffer.from(part.bytes!),
           `[${sample}] 未编辑 round-trip 后二进制部件 ${name} 字节漂移`,
         );
       }
@@ -94,13 +95,13 @@ test('dirty 部件被 build 输出替换，其余部件原样', () => {
     for (const [name, part] of doc.parts) {
       const next = reopened.parts.get(name);
       assert.ok(next, `[${sample}] 部件 ${name} 丢失`);
-      if (name === target) {
+      if (name === target && part.kind === 'xml') {
         // dirty 部件 = build 输出（与原始文本可不同，但必须能正常打开且结构对应）
         assert.equal(next.text, buildXml(part.tree, part.meta));
       } else if (part.kind === 'xml') {
         assert.equal(next.text, part.text, `[${sample}] 非 dirty 部件 ${name} 被改动`);
       } else {
-        assert.deepEqual(Buffer.from(next.bytes), Buffer.from(part.bytes));
+        assert.deepEqual(Buffer.from(next.bytes!), Buffer.from(part.bytes!));
       }
     }
   }

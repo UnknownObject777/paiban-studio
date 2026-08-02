@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import PizZip from 'pizzip';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { LocalFsObjectStore } from '../src/storage/objectStore.js';
@@ -20,10 +20,14 @@ import { fileURLToPath } from 'node:url';
 
 const DECL = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n';
 const W_NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"';
-const DEFAULT_RULESET_DIR = join(fileURLToPath(new URL('.', import.meta.url)), '../templates/rulesets/gongwen-default');
+const HERE = fileURLToPath(new URL('.', import.meta.url));
+const DEFAULT_RULESET_DIR = [
+  join(HERE, '../templates/rulesets/gongwen-default'),
+  join(HERE, '../../templates/rulesets/gongwen-default'),
+].find((p) => existsSync(p)) || join(HERE, '../templates/rulesets/gongwen-default');
 
 function makeTemplateDocx() {
-  const p = (text, pPr = '', rPr = '') =>
+  const p = (text: string, pPr = '', rPr = '') =>
     `<w:p>${pPr}<w:r>${rPr}<w:t xml:space="preserve">${text}</w:t></w:r></w:p>`;
   const zip = new PizZip();
   zip.file('[Content_Types].xml', DECL +
@@ -59,8 +63,8 @@ test('占位符提取：名称 / 次数 / 首现路径', () => {
   const ph = extractPlaceholders(buf);
   const names = ph.map((x) => x.name).sort();
   assert.deepEqual(names, ['发文单位', '联系人', '联系电话'].sort());
-  assert.equal(ph.find((x) => x.name === '发文单位').count, 1);
-  assert.ok(ph.find((x) => x.name === '发文单位').firstPath.startsWith('/body/p['));
+  assert.equal(ph.find((x) => x.name === '发文单位')!.count, 1);
+  assert.ok(ph.find((x) => x.name === '发文单位')!.firstPath.startsWith('/body/p['));
 });
 
 test('规则集反推：title/body/page 实测并通过两文件 schema 校验', () => {
@@ -99,7 +103,7 @@ test('实例化：占位符合并 → 新工作文档 v1，产物合法（自检
   assert.ok(r.result.selfCheck.ok);
   // 占位符已被替换
   const doc = openDocx(buf);
-  const text = JSON.stringify(doc.parts.get('word/document.xml').tree);
+  const text = JSON.stringify(doc.parts.get('word/document.xml')!.tree!);
   assert.ok(text.includes('某某市人民政府办公室'));
   assert.ok(text.includes('张三'));
   assert.ok(!text.includes('{{'));
@@ -111,18 +115,19 @@ test('规则集 → 内核命令：normalize 规则顺序与属性映射 + 页�
   const commands = rulesetToCommands(recognizers, styles);
   const normalize = commands.find((c) => c.command === 'normalize');
   assert.ok(normalize);
-  const names = normalize.ruleset.rules.map((r) => r.name);
+  const rules = normalize.ruleset.rules as Array<{ name: string; match?: any; set?: any }>;
+  const names = rules.map((r) => r.name);
   // 顺序：title → subtitle → heading1..4 → caption → attachment → body（兜底最后）
   assert.deepEqual(names, ['title', 'subtitle', 'heading1', 'heading2', 'heading3', 'heading4', 'caption', 'attachment', 'body']);
-  const title = normalize.ruleset.rules[0];
+  const title = rules[0]!;
   assert.deepEqual(title.match, { position: 'documentStart' });
   assert.equal(title.set.run.eastAsia, '方正小标宋简体');
   assert.equal(title.set.paragraph.align, 'center');
-  const h1 = normalize.ruleset.rules.find((r) => r.name === 'heading1');
+  const h1 = rules.find((r) => r.name === 'heading1')!;
   assert.equal(h1.match.text, '^[一二三四五六七八九十百]+、');
   assert.equal(h1.set.paragraph.firstLineChars, 200);
   assert.equal(h1.set.paragraph.outlineLevel, 0); // 1 起 → 0 起
-  const body = normalize.ruleset.rules.find((r) => r.name === 'body');
+  const body = rules.find((r) => r.name === 'body')!;
   assert.deepEqual(body.match, { fallback: true });
   // 页面设置命令
   const pageCmd = commands.find((c) => c.command === 'set');
@@ -137,7 +142,7 @@ test('规则集 → 内核命令：normalize 规则顺序与属性映射 + 页�
 test('端到端：内置公文规则集 normalize 一篇乱排版文档', () => {
   // 乱排版：标题不居中、标题正则命中段落无格式、正文无缩进
   const zip = new PizZip();
-  const p = (t) => `<w:p><w:r><w:t xml:space="preserve">${t}</w:t></w:r></w:p>`;
+  const p = (t: string) => `<w:p><w:r><w:t xml:space="preserve">${t}</w:t></w:r></w:p>`;
   zip.file('[Content_Types].xml', DECL + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="xml" ContentType="application/xml"/></Types>');
   zip.file('word/document.xml', DECL + `<w:document ${W_NS}><w:body>` +
     p('关于加强公文规范化管理工作的通知') +
@@ -159,7 +164,7 @@ test('端到端：内置公文规则集 normalize 一篇乱排版文档', () => 
   assert.equal(stats.body, 1);
 
   const doc = openDocx(buffer);
-  const tree = doc.parts.get('word/document.xml').tree;
+  const tree = doc.parts.get('word/document.xml')!.tree!;
   const docEl = tree.find((n) => isElement(n, 'w:document'));
   const body = findChild(docEl, 'w:body');
   const paras = findChildren(body, 'w:p');

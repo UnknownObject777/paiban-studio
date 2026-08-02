@@ -1,4 +1,4 @@
-// docx-core/applyEdits.js — 全系统唯一编辑 seam（spec 测试策略核心）。
+// docx-core/applyEdits.ts — 全系统唯一编辑 seam（spec 测试策略核心）。
 //
 //   applyEdits(docxBuffer, commands) → { buffer, result }
 //
@@ -20,17 +20,29 @@
 
 import { openDocx, toBuffer, markDirty, getXmlTree } from './docx.js';
 import { resolvePath, walkParagraphs, PathError } from './model.js';
-import { isElement, tagOf } from './ooxml.js';
+import { isElement, tagOf, childrenOf } from './ooxml.js';
 import {
   setParagraphProps, setRunProps, setParagraphRunProps,
   setAllSectionsProps, ensurePageNumberFooter,
   findReplace, addNode, removeNode, moveNode,
 } from './primitives.js';
 import { defineNumbering, setParagraphNumbering, clearParagraphNumbering } from './numbering.js';
+import type { XmlNode } from './xml.js';
+import type { Docx } from './docx.js';
+import type { ParagraphProps, RunProps, AddPosition } from './primitives.js';
+
+/** 编辑命令（命令对象，按 command 分派；其余字段按协议取值）。 */
+export interface EditCommand {
+  command: string;
+  [key: string]: any;
+}
 
 export class CommandError extends Error {
-  constructor(message, suggestion, code = 'COMMAND_FAILED') {
+  code: string;
+  suggestion?: string | null;
+  constructor(message: string, suggestion?: string | null, code = 'COMMAND_FAILED') {
     super(message);
+    this.name = 'CommandError';
     this.code = code;
     this.suggestion = suggestion;
   }
@@ -38,13 +50,13 @@ export class CommandError extends Error {
 
 // ---- set 命令的目标类型分派 ----
 
-function applySet(docx, cmd) {
+function applySet(docx: Docx, cmd: EditCommand): Record<string, any> {
   const { props = {} } = cmd;
 
   // 全文匹配批量设置：{ command:"set", match:{ text:"^…$", style?:"正文" }, props }
   if (cmd.match) {
     const re = new RegExp(cmd.match.text || '.*');
-    const hits = [];
+    const hits: string[] = [];
     walkParagraphs(docx, (p, path) => {
       const text = paragraphPlainText(p);
       if (!re.test(text)) return;
@@ -61,7 +73,7 @@ function applySet(docx, cmd) {
   const tag = tagOf(node);
 
   if (tag === 'w:p') {
-    const applied = [];
+    const applied: string[] = [];
     if (props.run) {
       const r = setParagraphRunProps(node, props.run);
       applied.push(`run×${r.runCount}`);
@@ -75,7 +87,7 @@ function applySet(docx, cmd) {
         applied.push(`numbering numId=${props.numbering.numId} ilvl=${props.numbering.ilvl || 0}`);
       }
     }
-    const paraProps = props.paragraph || Object.fromEntries(
+    const paraProps: ParagraphProps = props.paragraph || Object.fromEntries(
       Object.entries(props).filter(([k]) => !['run', 'numbering', 'paragraph'].includes(k)));
     if (Object.keys(paraProps).length) applied.push(...setParagraphProps(node, paraProps));
     markDirty(docx, 'word/document.xml');
@@ -99,10 +111,10 @@ function applySet(docx, cmd) {
 }
 
 // 段落纯文本（供 match 过滤）
-function paragraphPlainText(pNode) {
+function paragraphPlainText(pNode: XmlNode): string {
   let out = '';
-  const visit = (n) => {
-    for (const c of (n[tagOf(n)] || [])) {
+  const visit = (n: XmlNode): void => {
+    for (const c of childrenOf(n)) {
       if (c['#text'] !== undefined) out += c['#text'];
       else visit(c);
     }
@@ -117,25 +129,41 @@ function paragraphPlainText(pNode) {
 // match.position  'documentStart'（首个非空段落）| 'after:<规则名>'（该规则命中段之后的下一个非空段落）
 // match.fallback  兜底（未被前面规则命中的段落）
 // 每条段落按规则顺序首个命中者生效；rules 为空时报错（防止误清空文档）。
-function applyNormalize(docx, cmd) {
-  const rules = cmd.ruleset?.rules;
+
+interface NormalizeMatch {
+  text?: string;
+  notText?: string;
+  position?: string;
+  fallback?: boolean;
+}
+
+interface NormalizeRule {
+  name: string;
+  match?: NormalizeMatch;
+  set?: { paragraph?: ParagraphProps; run?: RunProps };
+  _re?: RegExp | null;
+  _notRe?: RegExp | null;
+}
+
+function applyNormalize(docx: Docx, cmd: EditCommand): { normalized: Record<string, number> } {
+  const rules = cmd.ruleset?.rules as NormalizeRule[] | undefined;
   if (!Array.isArray(rules) || !rules.length) {
     throw new CommandError('normalize 需要非空 ruleset.rules', '规则集由模板层供给；例: rules:[{ name:"body", match:{}, set:{...} }]');
   }
-  const compiled = rules.map((r) => ({
+  const compiled: NormalizeRule[] = rules.map((r) => ({
     ...r,
     _re: r.match?.text ? new RegExp(r.match.text) : null,
     _notRe: r.match?.notText ? new RegExp(r.match.notText) : null,
   }));
   const byName = new Map(compiled.map((r) => [r.name, r]));
-  const stats = {};
+  const stats: Record<string, number> = {};
   // 段落快照（含文本），保证 position 谓词按文档顺序求值
-  const paras = [];
+  const paras: Array<{ node: XmlNode; text: string }> = [];
   walkParagraphs(docx, (p) => paras.push({ node: p, text: paragraphPlainText(p) }));
 
   // position 谓词预解析
-  let documentStartIdx = paras.findIndex((x) => x.text.trim().length > 0);
-  const matchedIdxByRule = new Map(); // ruleName -> Set(idx)
+  const documentStartIdx = paras.findIndex((x) => x.text.trim().length > 0);
+  const matchedIdxByRule = new Map<string, Set<number>>(); // ruleName -> Set(idx)
 
   paras.forEach(({ node, text }, idx) => {
     const nonEmpty = text.trim().length > 0;
@@ -165,7 +193,7 @@ function applyNormalize(docx, cmd) {
       if (rule.set?.run) setParagraphRunProps(node, rule.set.run);
       stats[rule.name] = (stats[rule.name] || 0) + 1;
       if (!matchedIdxByRule.has(rule.name)) matchedIdxByRule.set(rule.name, new Set());
-      matchedIdxByRule.get(rule.name).add(idx);
+      matchedIdxByRule.get(rule.name)!.add(idx);
       break; // 首个命中者生效
     }
   });
@@ -175,11 +203,15 @@ function applyNormalize(docx, cmd) {
 
 // ---- 命令分派表 ----
 
-const HANDLERS = {
+interface Handler {
+  (docx: Docx, cmd: EditCommand): Record<string, any>;
+}
+
+const HANDLERS: Record<string, Handler> = {
   set: applySet,
   add: (docx, cmd) => {
     if (!cmd.parent || !cmd.node) throw new CommandError('add 需要 parent 与 node', 'node: { kind:"paragraph", text, props, runs }');
-    return addNode(docx, cmd.parent, cmd.node, cmd.position);
+    return addNode(docx, cmd.parent, cmd.node, cmd.position as AddPosition);
   },
   remove: (docx, cmd) => {
     if (!cmd.path) throw new CommandError('remove 需要 path');
@@ -187,9 +219,9 @@ const HANDLERS = {
   },
   move: (docx, cmd) => {
     if (!cmd.path || !cmd.parent) throw new CommandError('move 需要 path 与 parent');
-    return moveNode(docx, cmd.path, cmd.parent, cmd.position);
+    return moveNode(docx, cmd.path, cmd.parent, cmd.position as AddPosition);
   },
-  findReplace: (docx, cmd) => findReplace(docx, cmd.find, cmd.replace ?? '', cmd),
+  findReplace: (docx, cmd) => findReplace(docx, cmd.find, cmd.replace ?? '', { caseSensitive: cmd.caseSensitive, maxCount: cmd.maxCount }),
   normalize: applyNormalize,
   numbering: (docx, cmd) => {
     if (cmd.action === 'define') {
@@ -211,32 +243,57 @@ const HANDLERS = {
     }
     throw new CommandError(`未知 numbering action: ${cmd.action}`, '支持 define / attach / clear');
   },
-  pageNumber: (docx, cmd) => ensurePageNumberFooter(docx, cmd),
+  pageNumber: (docx, cmd) => ensurePageNumberFooter(docx, { align: cmd.align, sectionIndex: cmd.sectionIndex }),
 };
 
 // ---- 生成后自检 ----
 
-function selfCheck(buffer) {
+function selfCheck(buffer: Buffer): { ok: true; parts: number } {
   const docx = openDocx(buffer); // 重解析全部件（解析失败即抛）
   const tree = getXmlTree(docx, 'word/document.xml');
   const docEl = tree?.find((n) => isElement(n, 'w:document'));
   if (!docEl) throw new CommandError('自检失败：document.xml 缺少 w:document 根', null, 'SELF_CHECK_FAILED');
-  const body = (docEl['w:document'] || []).find((n) => isElement(n, 'w:body'));
+  const body = (docEl['w:document'] as XmlNode[] | undefined || []).find((n) => isElement(n, 'w:body'));
   if (!body) throw new CommandError('自检失败：document.xml 缺少 w:body', null, 'SELF_CHECK_FAILED');
   return { ok: true, parts: docx.parts.size };
 }
 
+export interface ApplyDetail {
+  index: number;
+  command: string;
+  path: string | null;
+  detail: Record<string, any>;
+}
+
+export interface ApplyError {
+  index: number;
+  command: string | null;
+  path: string | null;
+  code: string;
+  message: string;
+  suggestion: string | null | undefined;
+}
+
+export interface ApplyResult {
+  buffer: Buffer;
+  result: {
+    applied: ApplyDetail[];
+    errors: ApplyError[];
+    selfCheck: { ok: true; parts: number };
+  };
+}
+
 /**
  * 唯一编辑 seam。
- * @param {Buffer|Uint8Array} docxBuffer 原文档
- * @param {Array} commands 命令数组（空数组 = 纯 round-trip）
- * @returns {{ buffer: Buffer, result: { applied: Array, errors: Array, selfCheck: object } }}
+ * @param docxBuffer 原文档
+ * @param commands 命令数组（空数组 = 纯 round-trip）
+ * @returns 编辑产物 + 逐条 applied/errors + 生成后自检结果
  */
-export function applyEdits(docxBuffer, commands = []) {
+export function applyEdits(docxBuffer: Buffer | ArrayBuffer | Uint8Array, commands: EditCommand[] = []): ApplyResult {
   if (!Array.isArray(commands)) throw new CommandError('commands 必须是数组');
   const docx = openDocx(docxBuffer);
-  const applied = [];
-  const errors = [];
+  const applied: ApplyDetail[] = [];
+  const errors: ApplyError[] = [];
 
   commands.forEach((cmd, i) => {
     const handler = HANDLERS[cmd?.command];
@@ -249,7 +306,7 @@ export function applyEdits(docxBuffer, commands = []) {
     } catch (err) {
       errors.push({
         index: i, command: cmd?.command, path: cmd?.path || null,
-        code: err.code || 'COMMAND_FAILED', message: err.message, suggestion: err.suggestion || null,
+        code: (err as CommandError).code || 'COMMAND_FAILED', message: (err as Error).message, suggestion: (err as CommandError).suggestion || null,
       });
     }
   });

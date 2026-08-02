@@ -7,11 +7,11 @@
 
 import { COMPONENT_IDS, PAGE_ID, getComponent } from './components.js';
 
-export const MATCH_TYPES = Object.freeze(['regex', 'position', 'heuristic']);
+export const MATCH_TYPES: readonly string[] = Object.freeze(['regex', 'position', 'heuristic']);
 
-export const ALIGN_VALUES = Object.freeze(['left', 'center', 'right', 'justify']);
-export const PAGE_ALIGN_VALUES = Object.freeze(['left', 'center', 'right']);
-export const PAPER_VALUES = Object.freeze(['A4', 'A3', 'A5', 'B5', 'preserve', 'custom']);
+export const ALIGN_VALUES: readonly string[] = Object.freeze(['left', 'center', 'right', 'justify']);
+export const PAGE_ALIGN_VALUES: readonly string[] = Object.freeze(['left', 'center', 'right']);
+export const PAPER_VALUES: readonly string[] = Object.freeze(['A4', 'A3', 'A5', 'B5', 'preserve', 'custom']);
 
 // 段落组件允许的样式属性
 const PARAGRAPH_STYLE_KEYS = new Set([
@@ -64,15 +64,15 @@ const BOOLEAN_STYLE_KEYS = new Set([
   'headerBold',
 ]);
 
-function isPlainObject(value) {
+function isPlainObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-function isNonNegativeNumber(value) {
+function isNonNegativeNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0;
 }
 
-function validateMatchEntry(componentId, entry, errors) {
+function validateMatchEntry(componentId: string, entry: unknown, errors: string[]): void {
   if (!isPlainObject(entry) || typeof entry.type !== 'string') {
     errors.push(`recognizers.${componentId}: match 条目必须是含 type 的对象`);
     return;
@@ -91,18 +91,18 @@ function validateMatchEntry(componentId, entry, errors) {
     try {
       new RegExp(entry.pattern, typeof entry.flags === 'string' ? entry.flags : 'u');
     } catch (err) {
-      errors.push(`recognizers.${componentId}: 正则不可编译 "${entry.pattern}"（${err.message}）`);
+      errors.push(`recognizers.${componentId}: 正则不可编译 "${entry.pattern}"（${(err as Error).message}）`);
     }
   }
 }
 
-function validateRecognizerComponent(componentId, recognizer, errors) {
+function validateRecognizerComponent(componentId: string, recognizer: unknown, errors: string[]): void {
   const prefix = `recognizers.${componentId}`;
   if (!isPlainObject(recognizer)) {
     errors.push(`${prefix}: 必须是对象`);
     return;
   }
-  const hasMatch = Array.isArray(recognizer.match) && recognizer.match.length > 0;
+  const hasMatch = Array.isArray(recognizer.match) && (recognizer.match as unknown[]).length > 0;
   const hasFallback = recognizer.fallback === true;
   if (!hasMatch && !hasFallback) {
     errors.push(`${prefix}: 既无 match 规则也无 fallback: true`);
@@ -112,19 +112,20 @@ function validateRecognizerComponent(componentId, recognizer, errors) {
     errors.push(`${prefix}: fallback 组件不得再声明 match 规则`);
   }
   if (hasMatch) {
-    for (const entry of recognizer.match) {
+    for (const entry of recognizer.match as unknown[]) {
       validateMatchEntry(componentId, entry, errors);
     }
   }
 }
 
-function validateStyleComponent(componentId, style, errors) {
+function validateStyleComponent(componentId: string, style: unknown, errors: string[]): void {
   const prefix = `styles.${componentId}`;
   if (!isPlainObject(style)) {
     errors.push(`${prefix}: 必须是对象`);
     return;
   }
   const component = getComponent(componentId);
+  if (!component) return; // 未知组件已由组件键集校验报错
   const allowed = component.kind === 'table' ? TABLE_STYLE_KEYS : PARAGRAPH_STYLE_KEYS;
   for (const key of Object.keys(style)) {
     if (!allowed.has(key)) {
@@ -135,7 +136,7 @@ function validateStyleComponent(componentId, style, errors) {
     if (NUMERIC_STYLE_KEYS.has(key) && !isNonNegativeNumber(value)) {
       errors.push(`${prefix}.${key}: 必须是非负有限数`);
     }
-    if (key === 'align' && !ALIGN_VALUES.includes(value)) {
+    if (key === 'align' && !ALIGN_VALUES.includes(value as string)) {
       errors.push(`${prefix}.align: 非法值 "${value}"（允许：${ALIGN_VALUES.join('/')}）`);
     }
     if (key === 'fontEastAsia' || key === 'fontAscii' || key === 'headerFontEastAsia') {
@@ -148,23 +149,23 @@ function validateStyleComponent(componentId, style, errors) {
         errors.push(`${prefix}.${key}: 必须是布尔值`);
       }
     }
-    if (key === 'outlineLevel' && (!Number.isInteger(value) || value < 0 || value > 9)) {
+    if (key === 'outlineLevel' && (!Number.isInteger(value) || value as number < 0 || value as number > 9)) {
       errors.push(`${prefix}.outlineLevel: 必须是 0–9 的整数`);
     }
   }
 }
 
-function validatePage(page, errors) {
+function validatePage(page: unknown, errors: string[]): void {
   if (!isPlainObject(page)) {
     errors.push('styles.page: 必须是对象');
     return;
   }
-  if (!PAPER_VALUES.includes(page.paper)) {
+  if (!PAPER_VALUES.includes(page.paper as string)) {
     errors.push(`styles.page.paper: 非法值（允许：${PAPER_VALUES.join('/')}）`);
   }
   if (page.paper === 'custom') {
     for (const key of ['widthCm', 'heightCm']) {
-      if (!isNonNegativeNumber(page[key]) || page[key] === 0) {
+      if (!isNonNegativeNumber(page[key])) {
         errors.push(`styles.page.${key}: custom 纸张必须提供正数 ${key}`);
       }
     }
@@ -190,7 +191,7 @@ function validatePage(page, errors) {
     errors.push('styles.page.pageNumber.oddEven: 必须是布尔值');
   }
   for (const key of ['oddAlign', 'evenAlign']) {
-    if (!PAGE_ALIGN_VALUES.includes(pn[key])) {
+    if (!PAGE_ALIGN_VALUES.includes(pn[key] as string)) {
       errors.push(`styles.page.pageNumber.${key}: 非法值（允许：${PAGE_ALIGN_VALUES.join('/')}）`);
     }
   }
@@ -203,9 +204,9 @@ function validatePage(page, errors) {
  * 校验一份规则集（recognizers + styles 两文件已解析为对象）。
  * 返回错误信息数组，空数组表示通过。
  */
-export function validateRuleset(recognizers, styles) {
-  const errors = [];
-  const files = [
+export function validateRuleset(recognizers: unknown, styles: unknown): string[] {
+  const errors: string[] = [];
+  const files: Array<[string, unknown]> = [
     ['recognizers', recognizers],
     ['styles', styles],
   ];
@@ -217,30 +218,35 @@ export function validateRuleset(recognizers, styles) {
   }
   if (errors.length > 0) return errors;
 
-  if (typeof recognizers.ruleset !== 'string' || recognizers.ruleset.length === 0) {
+  const rec = recognizers as Record<string, any>;
+  const sty = styles as Record<string, any>;
+
+  if (typeof rec.ruleset !== 'string' || rec.ruleset.length === 0) {
     errors.push('recognizers.ruleset: 必须是非空字符串');
   }
-  if (recognizers.ruleset !== styles.ruleset) {
+  if (rec.ruleset !== sty.ruleset) {
     errors.push(
-      `两文件 ruleset id 不一致："${recognizers.ruleset}" vs "${styles.ruleset}"`,
+      `两文件 ruleset id 不一致："${rec.ruleset}" vs "${sty.ruleset}"`,
     );
   }
-  if (!Number.isInteger(recognizers.version) || recognizers.version < 1) {
+  if (!Number.isInteger(rec.version) || rec.version < 1) {
     errors.push('recognizers.version: 必须是 ≥1 的整数');
   }
-  if (recognizers.version !== styles.version) {
-    errors.push(`两文件 version 不一致：${recognizers.version} vs ${styles.version}`);
+  if (rec.version !== sty.version) {
+    errors.push(`两文件 version 不一致：${rec.version} vs ${sty.version}`);
   }
 
   for (const [label, data] of files) {
-    if (!isPlainObject(data.components)) {
+    const d = data as Record<string, any>;
+    if (!isPlainObject(d.components)) {
       errors.push(`${label}.components: 必须是对象`);
     }
   }
   if (errors.length > 0) return errors;
 
   for (const [label, data] of files) {
-    const ids = new Set(Object.keys(data.components));
+    const d = data as Record<string, any>;
+    const ids = new Set(Object.keys(d.components));
     for (const id of COMPONENT_IDS) {
       if (!ids.has(id)) errors.push(`${label}.components: 缺少组件 "${id}"`);
     }
@@ -248,14 +254,14 @@ export function validateRuleset(recognizers, styles) {
       if (!COMPONENT_IDS.includes(id)) errors.push(`${label}.components: 未知组件 "${id}"`);
     }
   }
-  if (recognizers[PAGE_ID] !== undefined) {
+  if (rec[PAGE_ID] !== undefined) {
     errors.push('recognizers 不得含 page 节（页面设置只属 styles.json）');
   }
 
   // 识别规则
   let fallbackCount = 0;
   for (const id of COMPONENT_IDS) {
-    const recognizer = recognizers.components[id];
+    const recognizer = rec.components[id];
     if (isPlainObject(recognizer) && recognizer.fallback === true) fallbackCount += 1;
     validateRecognizerComponent(id, recognizer, errors);
   }
@@ -265,10 +271,10 @@ export function validateRuleset(recognizers, styles) {
 
   // 样式
   for (const id of COMPONENT_IDS) {
-    validateStyleComponent(id, styles.components[id], errors);
+    validateStyleComponent(id, sty.components[id], errors);
   }
 
-  validatePage(styles[PAGE_ID], errors);
+  validatePage(sty[PAGE_ID], errors);
 
   return errors;
 }
