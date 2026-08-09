@@ -15,6 +15,8 @@ export interface NormalizeRule {
   name: string;
   match?: { text?: string; notText?: string; position?: string; fallback?: boolean; element?: string };
   set?: { paragraph?: ParagraphProps; run?: RunProps };
+  /** 表格智能对齐（smartAlign: true 时由 table 组件规则携带）：表头行 / 数值列分别套用的段落属性。 */
+  smartAlign?: { header?: ParagraphProps; numericColumn?: ParagraphProps };
   _re?: RegExp | null;
   _notRe?: RegExp | null;
 }
@@ -134,6 +136,10 @@ export function rulesetToCommands(
     const rule: NormalizeRule = { name: id, match: match as NormalizeRule['match'], set: {} };
     if (Object.keys(paragraph).length) rule.set!.paragraph = paragraph;
     if (Object.keys(run).length) rule.set!.run = run;
+    // 表格智能对齐：表头行居中、数值列右对齐（内核按单元格内容分桶，走 set.paragraph 原语）
+    if (id === 'table' && style.smartAlign === true) {
+      rule.smartAlign = { header: { align: 'center' }, numericColumn: { align: 'right' } };
+    }
     rules.push(rule);
   }
 

@@ -245,6 +245,61 @@ test('表格组件规则：isTableElement 翻译为 element:table，重排后表
   }
 });
 
+test('表格 smartAlign：表头行居中、数值列右对齐、文本列不受影响', () => {
+  // 3×3 表格：表头行 + 2 个正文行；第 2 列为数值列（42 / 3.5），第 1、3 列为文本列
+  const zip = new PizZip();
+  const p = (t: string) => `<w:p><w:r><w:t xml:space="preserve">${t}</w:t></w:r></w:p>`;
+  const tc = (t: string) => `<w:tc>${p(t)}</w:tc>`;
+  const tr = (...cells: string[]) => '<w:tr>' + cells.map(tc).join('') + '</w:tr>';
+  zip.file('[Content_Types].xml', DECL + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="xml" ContentType="application/xml"/></Types>');
+  zip.file('word/document.xml', DECL + `<w:document ${W_NS}><w:body>` +
+    p('关于年度指标完成情况的通知') +
+    '<w:tbl>' +
+    tr('指标名称', '完成数', '备注') +
+    tr('办结件数', '42', '良好') +
+    tr('办结率', '3.5', '一般') +
+    '</w:tbl>' +
+    '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr>' +
+    '</w:body></w:document>');
+  zip.file('word/_rels/document.xml.rels', DECL + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>');
+  const buf = zip.generate({ type: 'nodebuffer' });
+
+  const { recognizers, styles } = loadRuleset(DEFAULT_RULESET_DIR);
+  // 默认关闭：不翻译 smartAlign
+  let commands = rulesetToCommands(recognizers, styles);
+  let tableRule = commands[0].ruleset.rules.find((r: any) => r.name === 'table');
+  assert.equal(tableRule.smartAlign, undefined);
+  // 开启：翻译为表头/数值列两组段落属性
+  styles.components.table.smartAlign = true;
+  commands = rulesetToCommands(recognizers, styles);
+  tableRule = commands[0].ruleset.rules.find((r: any) => r.name === 'table');
+  assert.deepEqual(tableRule.smartAlign, { header: { align: 'center' }, numericColumn: { align: 'right' } });
+
+  const { buffer, result } = applyEdits(buf, commands);
+  assert.equal(result.errors.length, 0);
+  assert.ok(result.selfCheck.ok);
+  const stats = result.applied[0].detail.normalized;
+  assert.equal(stats.table, 9); // 9 个单元格段落仍归 table 规则（基础样式）
+  assert.equal(stats['table.smartAlign'], 5); // 表头 3 段 + 数值列 2 段
+
+  const doc = openDocx(buffer);
+  const tree = doc.parts.get('word/document.xml')!.tree!;
+  const docEl = tree.find((n) => isElement(n, 'w:document'));
+  const tbl = findChild(findChild(docEl, 'w:body'), 'w:tbl')!;
+  const jcOf = (cell: ReturnType<typeof findChild>) =>
+    getAttr(findChild(findChild(findChild(cell!, 'w:p'), 'w:pPr'), 'w:jc'), 'w:val');
+  const rows = findChildren(tbl, 'w:tr').map((row) => findChildren(row, 'w:tc'));
+  // 表头行：全部居中
+  assert.deepEqual(rows[0].map(jcOf), ['center', 'center', 'center']);
+  // 数值列（第 2 列）：右对齐
+  assert.deepEqual(rows.slice(1).map((r) => jcOf(r[1])), ['right', 'right']);
+  // 文本列（第 1、3 列）：不写对齐
+  assert.equal(jcOf(rows[1][0]), undefined);
+  assert.equal(jcOf(rows[1][2]), undefined);
+  assert.equal(jcOf(rows[2][0]), undefined);
+  assert.equal(jcOf(rows[2][2]), undefined);
+});
+
 test('页码奇偶页不同对齐：evenAlign 生成偶数页页脚并声明 evenAndOddHeaders', () => {
   // 最小文档（无 settings.xml 部件，覆盖内核最小创建路径）
   const zip = new PizZip();

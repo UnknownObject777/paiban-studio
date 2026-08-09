@@ -19,8 +19,8 @@
 //   - result.applied 逐条记录实际生效摘要，供对话层展示"AI 改了什么"。
 
 import { openDocx, toBuffer, markDirty, getXmlTree } from './docx.js';
-import { resolvePath, walkParagraphs, PathError } from './model.js';
-import { isElement, tagOf, childrenOf } from './ooxml.js';
+import { resolvePath, walkParagraphs, getBodyNode, PathError } from './model.js';
+import { isElement, tagOf, childrenOf, findChildren, textOf } from './ooxml.js';
 import {
   setParagraphProps, setRunProps, setParagraphRunProps,
   setAllSectionsProps, ensurePageNumberFooter,
@@ -129,6 +129,9 @@ function paragraphPlainText(pNode: XmlNode): string {
 // match.position  'documentStart'（首个非空段落）| 'after:<规则名>'（该规则命中段之后的下一个非空段落）
 // match.fallback  兜底（未被前面规则命中的段落）
 // match.element   'table'：段落位于 w:tbl 内即命中（表格组件样式；空单元格段落也套用）
+// rule.smartAlign 表格智能对齐（table 规则携带）：主循环后按表格结构追加一遍——
+//   首行（表头）单元格段落套 smartAlign.header；正文行中"所有非空单元格均为数值"的列
+//   套 smartAlign.numericColumn。对齐属性由模板层供给，套用走 setParagraphProps 原语。
 // 每条段落按规则顺序首个命中者生效；rules 为空时报错（防止误清空文档）。
 
 interface NormalizeMatch {
@@ -139,12 +142,63 @@ interface NormalizeMatch {
   element?: string;
 }
 
+interface SmartAlignProps {
+  header?: ParagraphProps;
+  numericColumn?: ParagraphProps;
+}
+
 interface NormalizeRule {
   name: string;
   match?: NormalizeMatch;
   set?: { paragraph?: ParagraphProps; run?: RunProps };
+  smartAlign?: SmartAlignProps;
   _re?: RegExp | null;
   _notRe?: RegExp | null;
+}
+
+// 数值单元格判定：整数/小数/千分位/百分数，可带正负号
+const NUMERIC_CELL_RE = /^[+-]?(\d{1,3}(,\d{3})+|\d+)(\.\d+)?%?$/;
+
+// 表格智能对齐：遍历 body 下所有表格（含嵌套），表头行居中、数值列右对齐。
+// 只处理表格的直属行/单元格/段落（嵌套表格作为独立表格自行处理）。
+function applySmartAlign(docx: Docx, smart: SmartAlignProps): number {
+  const tables: XmlNode[] = [];
+  const collect = (node: XmlNode): void => {
+    for (const c of childrenOf(node)) {
+      if (isElement(c, 'w:tbl')) { tables.push(c); collect(c); } // 嵌套表格也收集
+      else collect(c);
+    }
+  };
+  collect(getBodyNode(docx));
+
+  let count = 0;
+  const setOnCellParas = (tc: XmlNode, props: ParagraphProps): void => {
+    for (const p of findChildren(tc, 'w:p')) {
+      setParagraphProps(p, props);
+      count++;
+    }
+  };
+  for (const tbl of tables) {
+    const rows = findChildren(tbl, 'w:tr').map((tr) => findChildren(tr, 'w:tc'));
+    if (!rows.length) continue;
+    // 表头行（第一行）居中
+    if (smart.header) {
+      for (const tc of rows[0]) setOnCellParas(tc, smart.header);
+    }
+    // 数值列右对齐：正文行里该列所有非空单元格均为数值才认定
+    if (smart.numericColumn && rows.length > 1) {
+      const bodyRows = rows.slice(1);
+      const colCount = Math.max(...bodyRows.map((r) => r.length));
+      for (let col = 0; col < colCount; col++) {
+        const texts = bodyRows
+          .map((r) => (r[col] ? textOf(r[col]).trim() : ''))
+          .filter((t) => t.length > 0);
+        if (!texts.length || !texts.every((t) => NUMERIC_CELL_RE.test(t))) continue;
+        for (const r of bodyRows) if (r[col]) setOnCellParas(r[col], smart.numericColumn);
+      }
+    }
+  }
+  return count;
 }
 
 function applyNormalize(docx: Docx, cmd: EditCommand): { normalized: Record<string, number> } {
@@ -201,6 +255,12 @@ function applyNormalize(docx: Docx, cmd: EditCommand): { normalized: Record<stri
       break; // 首个命中者生效
     }
   });
+  // 表格智能对齐追加 pass（结构感知，主循环只按段落认领、无法表达行列语义）
+  for (const rule of compiled) {
+    if (!rule.smartAlign) continue;
+    const n = applySmartAlign(docx, rule.smartAlign);
+    if (n) stats[`${rule.name}.smartAlign`] = n;
+  }
   markDirty(docx, 'word/document.xml');
   return { normalized: stats };
 }
