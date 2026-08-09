@@ -14,6 +14,7 @@ import assert from 'node:assert/strict';
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import PizZip from 'pizzip';
 import { parseXml, buildXml } from '../src/docx-core/xml.js';
 import { openDocx, toBuffer, markDirty } from '../src/docx-core/docx.js';
 
@@ -126,4 +127,31 @@ test('roundTripXml 便捷函数保持声明/BOM/self-closing 细节', () => {
 <w:instrText xml:space="preserve"> TOC \o "1-3" \h \u </w:instrText>`.replace(/\n/, '\r\n');
   const { tree: t3, meta: m3 } = parseXml(toc);
   assert.equal(buildXml(t3, m3), toc);
+});
+
+// issue #27：纯数字文本节点不得被 fxp 解析为 number（`50.0` → 50 丢尾零）。
+// buffer → buffer 外部行为：含尾零小数的 docx，编辑内核重写脏部件后逐部件保真。
+test('issue #27：脏部件重写保留纯数字文本的原始字符串（50.0 不丢尾零）', () => {
+  const documentXml =
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n' +
+    '<w:document xmlns:w="x"><w:body>' +
+    '<w:p><w:r><w:t>50.0</w:t></w:r></w:p>' +
+    '<w:tbl><w:tr><w:tc><w:p><w:r><w:t>测量值 3.50 kg，偏差 -0.05，计数 12</w:t></w:r></w:p></w:tc></w:tr></w:tbl>' +
+    '</w:body></w:document>';
+  const zip = new PizZip();
+  zip.file('word/document.xml', documentXml);
+  const buffer = zip.generate({ type: 'nodebuffer' }) as Buffer;
+
+  const doc = openDocx(buffer);
+  markDirty(doc, 'word/document.xml');
+  const reopened = openDocx(toBuffer(doc));
+
+  const next = reopened.parts.get('word/document.xml');
+  assert.ok(next, 'document.xml 丢失');
+  const origPart = doc.parts.get('word/document.xml')!;
+  // 脏部件被 build 输出替换后，数字文本必须逐字节保留原始字符串
+  assert.equal(next.text, buildXml(origPart.tree!, origPart.meta!));
+  for (const text of ['>50.0<', '测量值 3.50 kg，偏差 -0.05，计数 12']) {
+    assert.ok(next.text!.includes(text), `dirty 部件重写后文本漂移，缺失: ${text}`);
+  }
 });

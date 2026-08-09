@@ -52,6 +52,11 @@ export function createParser(): XMLParser {
     // （如 w:instrText 字段指令、w:t 空 run），trimValues 默认 true 会破坏它们。
     trimValues: false,
     processEntities: true,
+    // 关键：文本节点一律保留原始字符串。fxp 默认 parseTagValue: true 会把纯数字
+    // 文本解析为 number（`50.0` → 50），build 时序列化回 `50` 丢尾零，脏部件重写
+    // 会静默改动含小数的表格单元格/段落文本（issue #27）。OOXML 文本（w:t 等）
+    // 语义上就是字符串，数值消费方（属性、规则集数值）读取处自行 Number() 归一。
+    parseTagValue: false,
   });
 }
 

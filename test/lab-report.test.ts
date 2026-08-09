@@ -42,14 +42,14 @@ function extractParagraphTexts(xml: string): string[] {
       if (!tag) continue;
       const text = node['#text'];
       if (tag === 'w:t') {
-        // fxp preserveOrder 下 #text 是 w:t 的子节点；纯数字文本会被 fxp 解析为 number，需 String() 还原
+        // fxp preserveOrder 下 #text 是 w:t 的子节点；parseTagValue:false 后文本恒为字符串（issue #27）
         const kids = node[tag];
         const pieces: string[] = [];
-        if (typeof text === 'string' || typeof text === 'number') pieces.push(String(text));
+        if (typeof text === 'string') pieces.push(text);
         if (Array.isArray(kids)) {
           for (const kid of kids as Array<Record<string, unknown>>) {
             const t = kid['#text'];
-            if (typeof t === 'string' || typeof t === 'number') pieces.push(String(t));
+            if (typeof t === 'string') pieces.push(t);
           }
         }
         cur = (cur ?? '') + pieces.join('');
