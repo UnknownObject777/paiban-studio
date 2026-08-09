@@ -1,0 +1,135 @@
+{
+  "ruleset": "lab-report-default",
+  "version": 1,
+  "description": "实验报告默认规则集（手写草稿，issue #17 决策评议用）· 样式与页面（component id → style + page）。字号/行距单位 pt，尺寸单位 cm。取高校实验报告通行规范：标题黑体加粗居中、正文宋体小四 1.5 倍行距、首行缩进 2 字符、图表题五号居中、A4 常规页边距 + 页脚居中页码；fontAscii=Times New Roman 为中英混排通行做法",
+  "components": {
+    "title": {
+      "fontEastAsia": "黑体",
+      "fontAscii": "Times New Roman",
+      "sizePt": 22,
+      "bold": true,
+      "align": "center",
+      "firstLineIndentChars": 0,
+      "lineSpacingMultiple": 1.5,
+      "spaceAfterPt": 12,
+      "notes": "报告题目：黑体二号（22pt）加粗居中，段后 12 磅"
+    },
+    "subtitle": {
+      "fontEastAsia": "楷体",
+      "fontAscii": "Times New Roman",
+      "sizePt": 14,
+      "bold": false,
+      "align": "center",
+      "firstLineIndentChars": 0,
+      "lineSpacingMultiple": 1.5,
+      "notes": "副标题/课程名/姓名学号行：楷体四号（14pt）居中"
+    },
+    "heading1": {
+      "fontEastAsia": "黑体",
+      "fontAscii": "Times New Roman",
+      "sizePt": 15,
+      "bold": true,
+      "align": "left",
+      "firstLineIndentChars": 0,
+      "lineSpacingMultiple": 1.5,
+      "spaceBeforePt": 12,
+      "spaceAfterPt": 6,
+      "outlineLevel": 1,
+      "notes": "一级标题（实验目的/实验原理等固定栏目或第X章/一、）：黑体小三（15pt）加粗顶格"
+    },
+    "heading2": {
+      "fontEastAsia": "黑体",
+      "fontAscii": "Times New Roman",
+      "sizePt": 14,
+      "bold": true,
+      "align": "left",
+      "firstLineIndentChars": 0,
+      "lineSpacingMultiple": 1.5,
+      "spaceBeforePt": 6,
+      "spaceAfterPt": 3,
+      "outlineLevel": 2,
+      "notes": "二级标题（（一）/1.1 等）：黑体四号（14pt）加粗顶格"
+    },
+    "heading3": {
+      "fontEastAsia": "黑体",
+      "fontAscii": "Times New Roman",
+      "sizePt": 12,
+      "bold": true,
+      "align": "left",
+      "firstLineIndentChars": 0,
+      "lineSpacingMultiple": 1.5,
+      "spaceBeforePt": 3,
+      "spaceAfterPt": 3,
+      "outlineLevel": 3,
+      "notes": "三级标题（1. 等）：黑体小四（12pt）加粗顶格"
+    },
+    "heading4": {
+      "fontEastAsia": "宋体",
+      "fontAscii": "Times New Roman",
+      "sizePt": 12,
+      "bold": true,
+      "align": "left",
+      "firstLineIndentChars": 0,
+      "lineSpacingMultiple": 1.5,
+      "spaceBeforePt": 3,
+      "spaceAfterPt": 3,
+      "outlineLevel": 4,
+      "notes": "四级标题（（1）等）：宋体小四加粗顶格，与正文区分仅靠字重"
+    },
+    "body": {
+      "fontEastAsia": "宋体",
+      "fontAscii": "Times New Roman",
+      "sizePt": 12,
+      "bold": false,
+      "align": "justify",
+      "firstLineIndentChars": 2,
+      "lineSpacingMultiple": 1.5,
+      "notes": "正文：宋体小四（12pt）两端对齐，1.5 倍行距，首行缩进 2 字符；含图片/嵌入对象的段落只处理文字格式、保留行距"
+    },
+    "caption": {
+      "fontEastAsia": "黑体",
+      "fontAscii": "Times New Roman",
+      "sizePt": 10.5,
+      "bold": false,
+      "align": "center",
+      "firstLineIndentChars": 0,
+      "lineSpacingMultiple": 1.5,
+      "spaceBeforePt": 3,
+      "spaceAfterPt": 3,
+      "notes": "图表标题：黑体五号（10.5pt）居中"
+    },
+    "table": {
+      "fontEastAsia": "宋体",
+      "fontAscii": "Times New Roman",
+      "sizePt": 10.5,
+      "headerFontEastAsia": "黑体",
+      "headerBold": true,
+      "smartAlign": false,
+      "notes": "表体宋体五号（10.5pt），表头黑体加粗；内容自动调整默认关闭，避免改变数据表布局"
+    },
+    "attachment": {
+      "fontEastAsia": "黑体",
+      "fontAscii": "Times New Roman",
+      "sizePt": 14,
+      "bold": true,
+      "align": "left",
+      "firstLineIndentChars": 0,
+      "lineSpacingMultiple": 1.5,
+      "pageBreakBefore": true,
+      "notes": "附件/附录标识：黑体四号加粗，段前分页"
+    }
+  },
+  "page": {
+    "paper": "A4",
+    "margins": { "topCm": 2.54, "bottomCm": 2.54, "leftCm": 3.17, "rightCm": 3.17 },
+    "footerDistanceCm": 1.75,
+    "pageNumber": {
+      "oddEven": false,
+      "oddAlign": "center",
+      "evenAlign": "center",
+      "fontEastAsia": "宋体",
+      "sizePt": 10.5
+    },
+    "notes": "A4 + Word 常规页边距（上下 2.54cm、左右 3.17cm），页脚距 1.75cm；页码页脚居中、宋体五号，不分奇偶（课程报告通常单面提交）"
+  }
+}
