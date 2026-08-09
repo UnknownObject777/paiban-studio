@@ -7,4 +7,5 @@ out/
 reference/
 *.docx
 !test/fixtures/*.docx
+!test/fixtures/**/*.docx
 
