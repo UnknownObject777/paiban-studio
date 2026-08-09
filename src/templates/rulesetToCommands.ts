@@ -2,9 +2,10 @@
 // 转编辑内核命令（normalize 规则 + 页面设置），模板层与编辑内核之间的翻译器。
 //
 // 组件顺序（首个命中者生效，特殊→兜底）：
-//   title(documentStart) → subtitle(after:title) → heading1..4(regex) → caption(regex)
+//   table(element:table，表格内段落优先认领，防止单元格文本误中标题正则)
+//   → title(documentStart) → subtitle(after:title) → heading1..4(regex) → caption(regex)
 //   → attachment(regex) → body(fallback)
-// page 节 → set /body/sectPr（margins/pageSize）+ pageNumber footer。
+// page 节 → set /body/sectPr（margins/pageSize）+ pageNumber footer（oddEven 时带 evenAlign）。
 
 import type { ParagraphProps, RunProps } from '../docx-core/primitives.js';
 import type { EditCommand } from '../docx-core/applyEdits.js';
@@ -12,7 +13,7 @@ import type { EditCommand } from '../docx-core/applyEdits.js';
 /** normalize 规则（与 applyEdits 中 applyNormalize 的结构对齐）。 */
 export interface NormalizeRule {
   name: string;
-  match?: { text?: string; notText?: string; position?: string; fallback?: boolean };
+  match?: { text?: string; notText?: string; position?: string; fallback?: boolean; element?: string };
   set?: { paragraph?: ParagraphProps; run?: RunProps };
   _re?: RegExp | null;
   _notRe?: RegExp | null;
@@ -80,9 +81,11 @@ interface NormalizeMatch {
   notText?: string;
   position?: string;
   fallback?: boolean;
+  element?: string;
 }
 
-// recognizers 中取某组件的首个可用内核 match（regex → text；position/heuristic → 位置谓词或 null）
+// recognizers 中取某组件的首个可用内核 match
+// （regex → text；position → 位置谓词；heuristic isTableElement → element:table；其余 heuristic → null）
 function recognizerToMatch(componentId: string, recognizer: Recognizer | undefined): NormalizeMatch | null {
   if (!recognizer) return null;
   if (recognizer.fallback) return { fallback: true };
@@ -92,13 +95,16 @@ function recognizerToMatch(componentId: string, recognizer: Recognizer | undefin
     if (entry.type === 'position' && entry.where === 'afterComponent' && entry.params?.component) {
       return { position: 'after:' + entry.params.component };
     }
-    // heuristic 无可执行内核映射 → 跳过（notes 保留在规则集里供人读）
+    if (entry.type === 'heuristic' && (entry as { kind?: string }).kind === 'isTableElement') {
+      return { element: 'table' }; // 表格元素自身即识别依据，由 normalize 按“段落位于 w:tbl 内”判定
+    }
+    // 其余 heuristic 无可执行内核映射 → 跳过（notes 保留在规则集里供人读）
   }
   return null;
 }
 
-// 组件应用顺序：特殊规则在前，兜底在后
-const RULE_ORDER: readonly string[] = ['title', 'subtitle', 'heading1', 'heading2', 'heading3', 'heading4', 'caption', 'attachment', 'body'];
+// 组件应用顺序：table 最先（认领表格内段落），特殊规则在前，兜底在后
+const RULE_ORDER: readonly string[] = ['table', 'title', 'subtitle', 'heading1', 'heading2', 'heading3', 'heading4', 'caption', 'attachment', 'body'];
 
 /**
  * 规则集 → 内核命令数组。
@@ -156,10 +162,14 @@ export function rulesetToCommands(
       commands.push({ command: 'set', path: '/body/sectPr', props });
     }
     if (page.pageNumber) {
-      commands.push({
+      const pn = page.pageNumber;
+      const cmd: EditCommand = {
         command: 'pageNumber', action: 'footer',
-        align: page.pageNumber.oddAlign || 'center',
-      });
+        align: pn.oddAlign || 'center',
+      };
+      // 奇偶页不同对齐：补发偶数页页脚（内核负责 evenAndOddHeaders + even footer 部件）
+      if (pn.oddEven && pn.evenAlign) cmd.evenAlign = pn.evenAlign;
+      commands.push(cmd);
     }
   }
   return commands;

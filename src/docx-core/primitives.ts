@@ -3,7 +3,7 @@
 // 覆盖：
 //   段落：对齐 / 首行缩进（字符或磅）/ 行距（磅值或倍数）/ 段前段后 / 分页控制 / 大纲级别 / 样式
 //   run ：中文字体(eastAsia) / 西文字体 / 字号 / 粗斜下划线 / 颜色 / 突出显示
-//   节  ：页边距 / 纸张大小方向 / 页码格式（pgNumType + 页脚 PAGE 字段）
+//   节  ：页边距 / 纸张大小方向 / 页码格式（pgNumType + 页脚 PAGE 字段，支持奇偶页不同对齐）
 //   文本：findReplace（跨 run 自动拆分）
 //   结构：addParagraph / remove / move
 //
@@ -13,7 +13,7 @@ import {
   el, textEl, tagOf, isElement, attrsOf, getAttr, setAttr, removeAttr,
   childrenOf, findChild, findChildren, ensureChild, insertOrdered,
   removeChildren, ensurePropContainer, setPPrLeaf, setRPrLeaf,
-  PPR_ORDER, RPR_ORDER, SECTPR_ORDER,
+  PPR_ORDER, RPR_ORDER, SECTPR_ORDER, SETTINGS_ORDER,
 } from './ooxml.js';
 import { getXmlTree, markDirty } from './docx.js';
 import { walkSections, walkParagraphs, parsePath, resolvePath } from './model.js';
@@ -333,63 +333,51 @@ function ensureContentTypeOverride(ctTree: XmlNode[], partName: string, contentT
 
 export interface FooterOptions {
   align?: string;
+  evenAlign?: string;
   sectionIndex?: number;
 }
 
-/**
- * 为文档（指定节，默认最后一节）插入居中页码页脚（PAGE 字段）。
- * 若节已有 footerReference 则复用既有 footer 部件并追加页码段；否则新建 footerN.xml。
- */
-export function ensurePageNumberFooter(docx: Docx, { align = 'center', sectionIndex }: FooterOptions = {}): { footer: string; align: string } {
-  const docPart = 'word/document.xml';
-  // 1. 找目标 sectPr
-  const sects: XmlNode[] = [];
-  walkSections(docx, (sect) => sects.push(sect));
-  if (!sects.length) throw new Error('文档无 sectPr');
-  const sectPr = sectionIndex === undefined ? sects[sects.length - 1] : sects[sectionIndex];
-  if (!sectPr) throw new Error(`节索引越界: ${sectionIndex}`);
-
-  // 2. 已有 footerReference → 复用部件
-  let footerName: string | null = null;
-  const existing = findChildren(sectPr, 'w:footerReference').find((f) => getAttr(f, 'w:type') === 'default');
-  const relsTree = getXmlTree(docx, 'word/_rels/document.xml.rels')!;
+// 确保 sectPr 挂载指定类型（default/even）的页脚部件并返回部件名：
+// 已有对应 footerReference 则复用既有部件，否则新建 footerN.xml + rels + content-type。
+function ensureFooterPart(docx: Docx, sectPr: XmlNode, relsTree: XmlNode[], type: 'default' | 'even'): string {
+  const existing = findChildren(sectPr, 'w:footerReference').find((f) => getAttr(f, 'w:type') === type);
   if (existing) {
     const rId = getAttr(existing, 'r:id');
     const root = relsTree.find((n) => isElement(n, 'Relationships'));
     const rel = root ? findChildren(root, 'Relationship').find((r) => getAttr(r, 'Id') === rId) : undefined;
-    if (rel) footerName = 'word/' + getAttr(rel, 'Target');
+    if (rel) return 'word/' + getAttr(rel, 'Target');
   }
 
-  if (!footerName) {
-    // 3. 新建 footer 部件
-    let n = 1;
-    while (docx.parts.has(`word/footer${n}.xml`)) n++;
-    footerName = `word/footer${n}.xml`;
-    const footerXml =
-      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n' +
-      '<w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" ' +
-      'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"></w:ftr>';
-    const { tree, meta } = parseXml(footerXml);
-    docx.parts.set(footerName, { kind: 'xml', tree, meta, text: footerXml, dirty: true });
+  let n = 1;
+  while (docx.parts.has(`word/footer${n}.xml`)) n++;
+  const footerName = `word/footer${n}.xml`;
+  const footerXml =
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n' +
+    '<w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" ' +
+    'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"></w:ftr>';
+  const { tree, meta } = parseXml(footerXml);
+  docx.parts.set(footerName, { kind: 'xml', tree, meta, text: footerXml, dirty: true });
 
-    const { root, id } = nextRelId(relsTree);
-    childrenOf(root).push(el('Relationship', {
-      Id: id,
-      Type: 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer',
-      Target: `footer${n}.xml`,
-    }));
-    markDirty(docx, 'word/_rels/document.xml.rels');
+  const { root, id } = nextRelId(relsTree);
+  childrenOf(root).push(el('Relationship', {
+    Id: id,
+    Type: 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer',
+    Target: `footer${n}.xml`,
+  }));
+  markDirty(docx, 'word/_rels/document.xml.rels');
 
-    const ctTree = getXmlTree(docx, '[Content_Types].xml')!;
-    ensureContentTypeOverride(ctTree, '/' + footerName,
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml');
-    markDirty(docx, '[Content_Types].xml');
+  const ctTree = getXmlTree(docx, '[Content_Types].xml')!;
+  ensureContentTypeOverride(ctTree, '/' + footerName,
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml');
+  markDirty(docx, '[Content_Types].xml');
 
-    const ref = el('w:footerReference', { 'w:type': 'default', 'r:id': id });
-    insertOrdered(sectPr, ref, SECTPR_ORDER);
-  }
+  const ref = el('w:footerReference', { 'w:type': type, 'r:id': id });
+  insertOrdered(sectPr, ref, SECTPR_ORDER, true); // default/even 可并存，不做同 tag 去重
+  return footerName;
+}
 
-  // 4. 向 footer 写入 PAGE 字段段落（先清掉旧页码段：含 PAGE 指令的段落）
+// 向 footer 部件写入 PAGE 字段段落（先清掉旧页码段：含 PAGE 指令的段落），返回实际对齐值。
+function writePageNumberParagraph(docx: Docx, footerName: string, align: string): string {
   const fPart = docx.parts.get(footerName);
   if (!fPart || fPart.kind !== 'xml') throw new Error(`footer 部件非法: ${footerName}`);
   const fRoot = fPart.tree.find((node) => isElement(node, 'w:ftr'))!;
@@ -418,8 +406,76 @@ export function ensurePageNumberFooter(docx: Docx, { align = 'center', sectionIn
   fRoot['w:ftr'] = childrenOf(fRoot).filter((c) => !(isElement(c, 'w:p') && hasPageField(c)));
   childrenOf(fRoot).push(p);
   markDirty(docx, footerName);
+  return jcVal;
+}
+
+// 确保 settings.xml 声明奇偶页页眉页脚不同（w:evenAndOddHeaders）；部件缺失时最小创建。
+function ensureEvenAndOddHeaders(docx: Docx): void {
+  const partName = 'word/settings.xml';
+  if (!docx.parts.has(partName)) {
+    const settingsXml =
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n' +
+      '<w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:evenAndOddHeaders/></w:settings>';
+    const { tree, meta } = parseXml(settingsXml);
+    docx.parts.set(partName, { kind: 'xml', tree, meta, text: settingsXml, dirty: true });
+
+    const relsTree = getXmlTree(docx, 'word/_rels/document.xml.rels')!;
+    const { root, id } = nextRelId(relsTree);
+    childrenOf(root).push(el('Relationship', {
+      Id: id,
+      Type: 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings',
+      Target: 'settings.xml',
+    }));
+    markDirty(docx, 'word/_rels/document.xml.rels');
+
+    const ctTree = getXmlTree(docx, '[Content_Types].xml')!;
+    ensureContentTypeOverride(ctTree, '/' + partName,
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml');
+    markDirty(docx, '[Content_Types].xml');
+    return;
+  }
+  const tree = getXmlTree(docx, partName)!;
+  const root = tree.find((n) => isElement(n, 'w:settings'));
+  if (!root) throw new Error('非法 settings 部件');
+  if (!findChild(root, 'w:evenAndOddHeaders')) {
+    insertOrdered(root, el('w:evenAndOddHeaders'), SETTINGS_ORDER);
+  }
+  markDirty(docx, partName);
+}
+
+/**
+ * 为文档（指定节，默认最后一节）插入页码页脚（PAGE 字段）。
+ * align 作用于默认（奇数页）页脚；evenAlign 传入时声明奇偶页不同（settings.xml
+ * evenAndOddHeaders）并为偶数页单独建 footer 部件。既有 footer 部件复用并替换旧页码段。
+ */
+export function ensurePageNumberFooter(
+  docx: Docx,
+  { align = 'center', evenAlign, sectionIndex }: FooterOptions = {},
+): { footer: string; align: string; evenFooter?: string; evenAlign?: string } {
+  const docPart = 'word/document.xml';
+  // 1. 找目标 sectPr
+  const sects: XmlNode[] = [];
+  walkSections(docx, (sect) => sects.push(sect));
+  if (!sects.length) throw new Error('文档无 sectPr');
+  const sectPr = sectionIndex === undefined ? sects[sects.length - 1] : sects[sectionIndex];
+  if (!sectPr) throw new Error(`节索引越界: ${sectionIndex}`);
+
+  // 2. 默认（奇数页）页脚
+  const relsTree = getXmlTree(docx, 'word/_rels/document.xml.rels')!;
+  const footerName = ensureFooterPart(docx, sectPr, relsTree, 'default');
+  const jcVal = writePageNumberParagraph(docx, footerName, align);
+  const result: { footer: string; align: string; evenFooter?: string; evenAlign?: string } = { footer: footerName, align: jcVal };
+
+  // 3. 奇偶页不同：偶数页独立页脚
+  if (evenAlign) {
+    ensureEvenAndOddHeaders(docx);
+    const evenFooterName = ensureFooterPart(docx, sectPr, relsTree, 'even');
+    result.evenFooter = evenFooterName;
+    result.evenAlign = writePageNumberParagraph(docx, evenFooterName, evenAlign);
+  }
+
   markDirty(docx, docPart);
-  return { footer: footerName, align: jcVal };
+  return result;
 }
 
 // ---- findReplace（跨 run） ----

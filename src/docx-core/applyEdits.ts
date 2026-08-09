@@ -11,7 +11,7 @@
 //   { command: "findReplace", find, replace, caseSensitive?, maxCount? }
 //   { command: "normalize", ruleset: { rules: [...] } }      规则集驱动的全文重排（模板层供给）
 //   { command: "numbering", action: "define"|"attach"|"clear", ... }
-//   { command: "pageNumber", action: "footer", align?, sectionIndex? }  页脚页码字段
+//   { command: "pageNumber", action: "footer", align?, evenAlign?, sectionIndex? }  页脚页码字段（evenAlign 时奇偶页分脚）
 //
 // 约定：
 //   - 全部命令按数组顺序应用；单条失败不中断（结构化错误收集，含自愈建议，D6）。
@@ -124,10 +124,11 @@ function paragraphPlainText(pNode: XmlNode): string {
 }
 
 // ---- normalize：规则集驱动全文重排 ----
-// ruleset: { rules: [{ name, match?: { text?, position?, fallback? }, set: { paragraph?, run? } }] }
+// ruleset: { rules: [{ name, match?: { text?, position?, fallback?, element? }, set: { paragraph?, run? } }] }
 // match.text      段落拼接文本正则
 // match.position  'documentStart'（首个非空段落）| 'after:<规则名>'（该规则命中段之后的下一个非空段落）
 // match.fallback  兜底（未被前面规则命中的段落）
+// match.element   'table'：段落位于 w:tbl 内即命中（表格组件样式；空单元格段落也套用）
 // 每条段落按规则顺序首个命中者生效；rules 为空时报错（防止误清空文档）。
 
 interface NormalizeMatch {
@@ -135,6 +136,7 @@ interface NormalizeMatch {
   notText?: string;
   position?: string;
   fallback?: boolean;
+  element?: string;
 }
 
 interface NormalizeRule {
@@ -157,21 +159,23 @@ function applyNormalize(docx: Docx, cmd: EditCommand): { normalized: Record<stri
   }));
   const byName = new Map(compiled.map((r) => [r.name, r]));
   const stats: Record<string, number> = {};
-  // 段落快照（含文本），保证 position 谓词按文档顺序求值
-  const paras: Array<{ node: XmlNode; text: string }> = [];
-  walkParagraphs(docx, (p) => paras.push({ node: p, text: paragraphPlainText(p) }));
+  // 段落快照（含文本与是否在表格内），保证 position/element 谓词按文档顺序求值
+  const paras: Array<{ node: XmlNode; text: string; inTable: boolean }> = [];
+  walkParagraphs(docx, (p, path) => paras.push({ node: p, text: paragraphPlainText(p), inTable: path.includes('/tbl[') }));
 
   // position 谓词预解析
   const documentStartIdx = paras.findIndex((x) => x.text.trim().length > 0);
   const matchedIdxByRule = new Map<string, Set<number>>(); // ruleName -> Set(idx)
 
-  paras.forEach(({ node, text }, idx) => {
+  paras.forEach(({ node, text, inTable }, idx) => {
     const nonEmpty = text.trim().length > 0;
     for (const rule of compiled) {
       if (rule._notRe && nonEmpty && rule._notRe.test(text)) continue; // 负向守卫
       let hit = false;
       if (rule._re) {
         hit = nonEmpty && rule._re.test(text);
+      } else if (rule.match?.element === 'table') {
+        hit = inTable; // 表格内段落（含空单元格），靠规则顺序先于文本类规则认领
       } else if (rule.match?.position === 'documentStart') {
         hit = idx === documentStartIdx;
       } else if (rule.match?.position?.startsWith('after:')) {
@@ -243,7 +247,7 @@ const HANDLERS: Record<string, Handler> = {
     }
     throw new CommandError(`未知 numbering action: ${cmd.action}`, '支持 define / attach / clear');
   },
-  pageNumber: (docx, cmd) => ensurePageNumberFooter(docx, { align: cmd.align, sectionIndex: cmd.sectionIndex }),
+  pageNumber: (docx, cmd) => ensurePageNumberFooter(docx, { align: cmd.align, evenAlign: cmd.evenAlign, sectionIndex: cmd.sectionIndex }),
 };
 
 // ---- 生成后自检 ----

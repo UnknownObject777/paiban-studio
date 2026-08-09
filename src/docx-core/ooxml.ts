@@ -120,6 +120,37 @@ export const SECTPR_ORDER: readonly string[] = [
   'w:sectPrChange',
 ];
 
+// w:settings 子元素顺序（CT_Settings 序列子集，覆盖常见元素；未列出的视为最末）
+export const SETTINGS_ORDER: readonly string[] = [
+  'w:writeProtection', 'w:view', 'w:zoom', 'w:removePersonalInformation',
+  'w:doNotDisplayPageBoundaries', 'w:displayBackgroundShape', 'w:printPostScriptOverText',
+  'w:printFractionalCharacterWidth', 'w:printFormsData', 'w:embedTrueTypeFonts',
+  'w:embedSystemFonts', 'w:saveSubsetFonts', 'w:saveFormsData', 'w:mirrorMargins',
+  'w:alignBordersAndEdges', 'w:bordersDoNotSurroundHeader', 'w:bordersDoNotSurroundFooter',
+  'w:gutterAtTop', 'w:hideSpellingErrors', 'w:hideGrammaticalErrors', 'w:activeWritingStyle',
+  'w:proofState', 'w:formsDesign', 'w:attachedTemplate', 'w:linkStyles',
+  'w:stylePaneFormatFilter', 'w:stylePaneSortMethod', 'w:documentType', 'w:mailMerge',
+  'w:revisionView', 'w:trackChanges', 'w:doNotTrackMoves', 'w:doNotTrackFormatting',
+  'w:documentProtection', 'w:autoFormatOverride', 'w:styleLockTheme', 'w:styleLockQFSet',
+  'w:defaultTabStop', 'w:autoHyphenation', 'w:consecutiveHyphenLimit', 'w:hyphenationZone',
+  'w:doNotHyphenateCaps', 'w:showEnvelope', 'w:summaryLength', 'w:clickAndTypeStyle',
+  'w:defaultTableStyle', 'w:evenAndOddHeaders', 'w:bookFoldRevPrinting', 'w:bookFoldPrinting',
+  'w:bookFoldPrintingSheets', 'w:drawingGridHorizontalSpacing', 'w:drawingGridVerticalSpacing',
+  'w:displayHorizontalDrawingGridEvery', 'w:displayVerticalDrawingGridEvery',
+  'w:doNotUseMarginsForDrawingGridOrigin', 'w:drawingGridHorizontalOrigin',
+  'w:drawingGridVerticalOrigin', 'w:doNotShadeFormData', 'w:noPunctuationKerning',
+  'w:characterSpacingControl', 'w:printTwoOnOne', 'w:strictFirstAndLastChars',
+  'w:noLineBreaksAfter', 'w:noLineBreaksBefore', 'w:savePreviewPicture',
+  'w:doNotValidateAgainstSchema', 'w:saveInvalidXml', 'w:ignoreMixedContent',
+  'w:alwaysShowPlaceholderText', 'w:doNotDemarcateInvalidXml', 'w:saveXmlDataOnly',
+  'w:useXSLTWhenSaving', 'w:saveThroughXslt', 'w:showXMLTags', 'w:alwaysMergeEmptyNamespace',
+  'w:updateFields', 'w:hdrShapeDefaults', 'w:footnotePr', 'w:endnotePr', 'w:compat',
+  'w:docVars', 'w:rsids', 'm:mathPr', 'w:attachedSchema', 'w:themeFontLang',
+  'w:clrSchemeMapping', 'w:doNotIncludeSubdocsInStats', 'w:doNotAutoCompressPictures',
+  'w:forceUpgrade', 'w:captions', 'w:readModeInkLockDown', 'w:smartTagType',
+  'w:shapeDefaults', 'w:decimalSymbol', 'w:listSeparator',
+];
+
 // w:p / w:tbl 级：属性元素（pPr/tblPr）必须排在内容之前
 const PARA_ORDER: readonly string[] = ['w:pPr', 'w:rPr'];
 
@@ -128,12 +159,15 @@ function orderIndex(order: readonly string[], tag: string): number {
   return i === -1 ? order.length : i;
 }
 
-// 在 parent 的子节点中按给定顺序表插入 child（同 tag 已存在时不插入，返回既有节点）。
-export function insertOrdered(parent: XmlNode, child: XmlNode, order: readonly string[]): XmlNode {
+// 在 parent 的子节点中按给定顺序表插入 child（默认同 tag 已存在时不插入，返回既有节点；
+// allowDuplicate=true 时不做同 tag 去重——footerReference 等可重复元素使用）。
+export function insertOrdered(parent: XmlNode, child: XmlNode, order: readonly string[], allowDuplicate = false): XmlNode {
   const tag = tagOf(child);
   const children = childrenOf(parent);
-  const existing = children.find((c) => isElement(c, tag));
-  if (existing) return existing;
+  if (!allowDuplicate) {
+    const existing = children.find((c) => isElement(c, tag));
+    if (existing) return existing;
+  }
   const want = orderIndex(order, tag!);
   let pos = children.length;
   for (let i = 0; i < children.length; i++) {

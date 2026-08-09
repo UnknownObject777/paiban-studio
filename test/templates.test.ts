@@ -117,9 +117,13 @@ test('规则集 → 内核命令：normalize 规则顺序与属性映射 + 页�
   assert.ok(normalize);
   const rules = normalize.ruleset.rules as Array<{ name: string; match?: any; set?: any }>;
   const names = rules.map((r) => r.name);
-  // 顺序：title → subtitle → heading1..4 → caption → attachment → body（兜底最后）
-  assert.deepEqual(names, ['title', 'subtitle', 'heading1', 'heading2', 'heading3', 'heading4', 'caption', 'attachment', 'body']);
-  const title = rules[0]!;
+  // 顺序：table（表格内段落优先认领）→ title → subtitle → heading1..4 → caption → attachment → body（兜底最后）
+  assert.deepEqual(names, ['table', 'title', 'subtitle', 'heading1', 'heading2', 'heading3', 'heading4', 'caption', 'attachment', 'body']);
+  const table = rules[0]!;
+  assert.deepEqual(table.match, { element: 'table' }); // heuristic isTableElement → 元素谓词
+  assert.equal(table.set.run.eastAsia, '仿宋_GB2312');
+  assert.equal(table.set.run.sizePt, 14);
+  const title = rules.find((r) => r.name === 'title')!;
   assert.deepEqual(title.match, { position: 'documentStart' });
   assert.equal(title.set.run.eastAsia, '方正小标宋简体');
   assert.equal(title.set.paragraph.align, 'center');
@@ -135,8 +139,11 @@ test('规则集 → 内核命令：normalize 规则顺序与属性映射 + 页�
   assert.equal(pageCmd.props.marginsCm.top, 3.7);
   assert.equal(pageCmd.props.marginsCm.left, 2.8);
   assert.equal(pageCmd.props.marginsCm.footer, 2.5);
-  // 页码命令
-  assert.ok(commands.find((c) => c.command === 'pageNumber'));
+  // 页码命令（奇偶页不同对齐：evenAlign 必须随命令下发）
+  const pnCmd = commands.find((c) => c.command === 'pageNumber');
+  assert.ok(pnCmd);
+  assert.equal(pnCmd.align, 'right');
+  assert.equal(pnCmd.evenAlign, 'left');
 });
 
 test('端到端：内置公文规则集 normalize 一篇乱排版文档', () => {
@@ -187,4 +194,95 @@ test('端到端：内置公文规则集 normalize 一篇乱排版文档', () => 
   // 页面：公文页边距已写入
   const sect = findChild(body, 'w:sectPr');
   assert.equal(getAttr(findChild(sect, 'w:pgMar'), 'w:top'), String(Math.round(3.7 * 566.929)));
+});
+
+test('表格组件规则：isTableElement 翻译为 element:table，重排后表格套模板样式', () => {
+  // 乱排版文档：题目 + 一张 2×2 表格（含形似三级标题的单元格文本「1. 指标」）+ 表格外正文段
+  const zip = new PizZip();
+  const p = (t: string) => `<w:p><w:r><w:t xml:space="preserve">${t}</w:t></w:r></w:p>`;
+  const tc = (t: string) => `<w:tc>${p(t)}</w:tc>`;
+  zip.file('[Content_Types].xml', DECL + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="xml" ContentType="application/xml"/></Types>');
+  zip.file('word/document.xml', DECL + `<w:document ${W_NS}><w:body>` +
+    p('关于加强公文规范化管理工作的通知') +
+    '<w:tbl><w:tr>' + tc('指标名称') + tc('1. 指标') + '</w:tr><w:tr>' + tc('完成率') + tc('42') + '</w:tr></w:tbl>' +
+    p('各科室：请参照上表数据认真贯彻执行。') +
+    '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr>' +
+    '</w:body></w:document>');
+  zip.file('word/_rels/document.xml.rels', DECL + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>');
+  const buf = zip.generate({ type: 'nodebuffer' });
+
+  const { recognizers, styles } = loadRuleset(DEFAULT_RULESET_DIR);
+  const commands = rulesetToCommands(recognizers, styles);
+  const { buffer, result } = applyEdits(buf, commands);
+  assert.equal(result.errors.length, 0);
+  assert.ok(result.selfCheck.ok);
+  const stats = result.applied[0].detail.normalized;
+  assert.equal(stats.table, 4); // 4 个单元格段落全部归 table 规则
+  assert.equal(stats.title, 1);
+  assert.equal(stats.body, 1); // 表格外正文段仍归 body
+  assert.equal(stats.heading3, undefined); // 「1. 指标」不得被三级标题正则吞噬
+
+  const doc = openDocx(buffer);
+  const tree = doc.parts.get('word/document.xml')!.tree!;
+  const docEl = tree.find((n) => isElement(n, 'w:document'));
+  const body = findChild(docEl, 'w:body');
+  const tbl = findChild(body, 'w:tbl');
+  assert.ok(tbl, '表格存在');
+  // 每个单元格段落：仿宋_GB2312 + 14pt（sz 半磅 28），且不打大纲级别
+  const cellParas: Array<ReturnType<typeof findChild>> = [];
+  for (const tr of findChildren(tbl, 'w:tr')) {
+    for (const cell of findChildren(tr, 'w:tc')) {
+      cellParas.push(...findChildren(cell, 'w:p'));
+    }
+  }
+  assert.equal(cellParas.length, 4);
+  for (const cp of cellParas) {
+    const rPr = findChild(findChild(cp, 'w:r'), 'w:rPr');
+    assert.equal(getAttr(findChild(rPr, 'w:rFonts'), 'w:eastAsia'), '仿宋_GB2312');
+    assert.equal(getAttr(findChild(rPr, 'w:sz'), 'w:val'), '28');
+    const pPr = findChild(cp, 'w:pPr');
+    assert.equal(pPr ? findChild(pPr, 'w:outlineLvl') : undefined, undefined);
+  }
+});
+
+test('页码奇偶页不同对齐：evenAlign 生成偶数页页脚并声明 evenAndOddHeaders', () => {
+  // 最小文档（无 settings.xml 部件，覆盖内核最小创建路径）
+  const zip = new PizZip();
+  const p = (t: string) => `<w:p><w:r><w:t xml:space="preserve">${t}</w:t></w:r></w:p>`;
+  zip.file('[Content_Types].xml', DECL + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="xml" ContentType="application/xml"/></Types>');
+  zip.file('word/document.xml', DECL + `<w:document ${W_NS}><w:body>` +
+    p('正文。') +
+    '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr>' +
+    '</w:body></w:document>');
+  zip.file('word/_rels/document.xml.rels', DECL + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>');
+  const buf = zip.generate({ type: 'nodebuffer' });
+
+  const { recognizers, styles } = loadRuleset(DEFAULT_RULESET_DIR);
+  const commands = rulesetToCommands(recognizers, styles);
+  const { buffer, result } = applyEdits(buf, commands);
+  assert.equal(result.errors.length, 0);
+  assert.ok(result.selfCheck.ok);
+
+  const doc = openDocx(buffer);
+  // settings.xml 已创建并声明奇偶页不同
+  const settings = doc.parts.get('word/settings.xml');
+  assert.ok(settings, 'settings.xml 部件已创建');
+  const sRoot = settings.tree!.find((n) => isElement(n, 'w:settings'))!;
+  assert.ok(findChild(sRoot, 'w:evenAndOddHeaders'), 'evenAndOddHeaders 已声明');
+  // sectPr 同时挂载 default（奇数页）与 even（偶数页）页脚引用
+  const tree = doc.parts.get('word/document.xml')!.tree!;
+  const docEl = tree.find((n) => isElement(n, 'w:document'));
+  const sect = findChild(findChild(docEl, 'w:body'), 'w:sectPr');
+  const refTypes = findChildren(sect, 'w:footerReference').map((f) => getAttr(f, 'w:type'));
+  assert.ok(refTypes.includes('default') && refTypes.includes('even'), `footerReference 类型: ${refTypes}`);
+  // 奇数页脚右对齐、偶数页脚左对齐，均含 PAGE 字段
+  const pnDetail = result.applied.find((a) => a.command === 'pageNumber')!.detail;
+  assert.ok(pnDetail.evenFooter, '返回偶数页脚部件名');
+  const footerJc = (partName: string) => {
+    const fRoot = doc.parts.get(partName)!.tree!.find((n) => isElement(n, 'w:ftr'))!;
+    const fp = findChildren(fRoot, 'w:p').find((x) => JSON.stringify(x).includes('PAGE'))!;
+    return getAttr(findChild(findChild(fp, 'w:pPr'), 'w:jc'), 'w:val');
+  };
+  assert.equal(footerJc(pnDetail.footer), 'right');
+  assert.equal(footerJc(pnDetail.evenFooter), 'left');
 });
