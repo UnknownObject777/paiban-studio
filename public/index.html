@@ -7,80 +7,120 @@
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-<div id="app">
+<div id="app" data-phase="landing">
   <!-- 顶栏 -->
   <header id="topbar">
     <div class="brand"><span class="seal">排</span>排版工作台<span class="brand-tag">PAIBAN STUDIO</span></div>
-    <div class="safety-hint" id="safety-hint" title="所有修改只作用于工作副本，原始文件不会被改动">只处理副本 · 原稿不动 · 全程本地</div>
+    <div class="safety-hint" title="所有修改只作用于工作副本，原始文件不会被改动">只处理副本 · 原稿不动 · 全程本地</div>
     <div class="spacer"></div>
     <div id="model-status" class="model-status pill">模型检测中…</div>
     <button id="btn-settings" class="btn pill ghost">模型设置</button>
   </header>
 
-  <div id="columns">
-    <!-- 左栏：模板库 / 工作文档 -->
-    <aside id="left">
-      <section class="panel">
-        <div class="panel-head">
-          <h2>模板库</h2>
-          <button id="btn-upload-template" class="btn pill small">上传模板</button>
-        </div>
-        <ul id="template-list" class="item-list empty-hint" data-empty="还没有模板，上传单位范本即可沉淀为资产"></ul>
-        <div class="builtin-ruleset-row">
-          <select id="builtin-ruleset-select" title="内置规则集"></select>
-          <button id="btn-apply-ruleset" class="btn pill small">一键重排</button>
-        </div>
-      </section>
-      <section class="panel grow">
-        <div class="panel-head">
-          <h2>工作文档</h2>
-          <button id="btn-open-doc" class="btn pill small solid">打开 docx</button>
-        </div>
-        <ul id="doc-list" class="item-list empty-hint" data-empty="打开一篇排版混乱的 docx 开始"></ul>
-      </section>
-    </aside>
+  <!-- Landing：唯一居中对话窗（类 ChatGPT 首屏） -->
+  <main id="landing">
+    <div class="landing-inner">
+      <p class="eyebrow">AI TYPESETTING ENGINE</p>
+      <h1 class="landing-title">用自然语言<br>指挥 AI 排版</h1>
+      <p class="dim">打开一篇排版混乱的 docx，然后直接说你想怎么排</p>
+      <div id="landing-input-slot" class="input-slot">
+        <form id="chat-form">
+          <input id="chat-input" type="text" placeholder="打开文档后，对 AI 说你想怎么排…" autocomplete="off">
+          <button type="submit" class="btn pill solid" id="btn-send">发送</button>
+          <button type="button" class="btn pill ghost hidden" id="btn-abort">停止</button>
+        </form>
+      </div>
+      <div class="suggest-chips">
+        <button type="button" class="suggest-chip" data-prompt="标题改成黑体三号居中">「标题改成黑体三号居中」</button>
+        <button type="button" class="suggest-chip" data-prompt="正文统一仿宋四号，行距 28 磅">「正文统一仿宋四号、行距 28 磅」</button>
+        <button type="button" class="suggest-chip" data-prompt="按《通知》模板的样式排">「按《通知》模板的样式排」</button>
+      </div>
+      <div class="landing-actions">
+        <button id="btn-open-doc-landing" class="btn pill solid big-action">打开 docx 开始</button>
+      </div>
+      <div id="landing-recents" class="landing-recents"></div>
+      <p class="dim small-note">所有修改只作用于工作副本，原始文件不会被改动</p>
+    </div>
+  </main>
 
-    <!-- 中栏：对话流 -->
-    <main id="center">
-      <div id="chat-stream" class="chat-stream">
-        <div class="chat-empty" id="chat-empty">
-          <p class="eyebrow">AI TYPESETTING ENGINE</p>
-          <p class="big">用自然语言<br>指挥 AI 排版</p>
-          <p class="dim">打开一篇排版混乱的 docx，然后直接说你想怎么排</p>
-          <div class="suggest-chips">
-            <button type="button" class="suggest-chip" data-prompt="标题改成黑体三号居中">「标题改成黑体三号居中」</button>
-            <button type="button" class="suggest-chip" data-prompt="正文统一仿宋四号，行距 28 磅">「正文统一仿宋四号、行距 28 磅」</button>
-            <button type="button" class="suggest-chip" data-prompt="按《通知》模板的样式排">「按《通知》模板的样式排」</button>
-          </div>
-          <p class="dim small-note">所有修改只作用于工作副本，原始文件不会被改动</p>
+  <!-- 编辑态：对话左移窄列 + 右侧大预览 -->
+  <div id="workbench" class="hidden">
+    <!-- 窄屏视图切换（宽屏隐藏） -->
+    <div class="view-tabs">
+      <button type="button" class="view-tab active" data-tab="chat">对话</button>
+      <button type="button" class="view-tab" data-tab="preview">预览</button>
+    </div>
+
+    <aside id="chat-col">
+      <div class="chat-head">
+        <button id="btn-back" class="btn pill small ghost" title="返回首页">← 首页</button>
+        <span id="current-doc-name" class="doc-name" title=""></span>
+        <div class="chat-head-actions">
+          <button id="btn-drawer-docs" class="btn pill small">文档</button>
+          <button id="btn-drawer-templates" class="btn pill small">模板</button>
+          <button id="btn-drawer-versions" class="btn pill small">版本</button>
         </div>
       </div>
-      <form id="chat-form">
-        <input id="chat-input" type="text" placeholder="对当前文档说点什么…（先打开一篇文档）" autocomplete="off">
-        <button type="submit" class="btn pill solid" id="btn-send">发送</button>
-        <button type="button" class="btn pill ghost hidden" id="btn-abort">停止</button>
-      </form>
-    </main>
 
-    <!-- 右栏：预览 + 版本时间线 -->
-    <aside id="right">
-      <section class="panel preview-panel">
-        <div class="panel-head">
-          <h2>实时预览</h2>
-          <button id="btn-download" class="btn pill small" disabled>下载 docx</button>
+      <!-- 用户可感知的工作进度：当前步骤 + 步骤链 -->
+      <div id="progress-bar" class="hidden">
+        <div class="progress-current">
+          <span class="progress-spinner" aria-hidden="true"></span>
+          <span id="progress-label"></span>
         </div>
-        <div id="preview-wrap">
-          <div id="preview-placeholder" class="dim">打开文档后此处实时渲染排版效果</div>
-          <iframe id="preview-frame" src="preview.html?x2t-only" title="文档预览" class="hidden"></iframe><!-- TEMP: x2t 隔离测试，定位 OOM 后还原 -->
-        </div>
-      </section>
-      <section class="panel versions-panel">
-        <div class="panel-head"><h2>版本时间线</h2></div>
-        <ul id="version-list" class="item-list empty-hint" data-empty="每次修改自动存版本，可随时回滚"></ul>
-      </section>
+        <ol id="progress-steps"></ol>
+      </div>
+
+      <div id="chat-stream" class="chat-stream"></div>
+      <div id="editing-input-slot" class="input-slot"></div>
     </aside>
+
+    <main id="preview-col">
+      <div class="preview-head">
+        <h2>实时预览</h2>
+        <button id="btn-download" class="btn pill small" disabled>下载 docx</button>
+      </div>
+      <div id="preview-wrap">
+        <div id="preview-placeholder" class="dim">打开文档后此处实时渲染排版效果</div>
+        <iframe id="preview-frame" src="preview.html?x2t-only" title="文档预览" class="hidden"></iframe><!-- TEMP: x2t 隔离测试，定位 OOM 后还原 -->
+      </div>
+    </main>
   </div>
 </div>
+
+<!-- 抽屉：工作文档 -->
+<dialog id="drawer-docs" class="drawer">
+  <div class="drawer-head">
+    <h3>工作文档</h3>
+    <button class="btn pill small ghost" data-close>关闭</button>
+  </div>
+  <button id="btn-open-doc" class="btn pill solid">打开 docx</button>
+  <ul id="doc-list" class="item-list empty-hint" data-empty="打开一篇排版混乱的 docx 开始"></ul>
+</dialog>
+
+<!-- 抽屉：模板库 + 内置规则集 -->
+<dialog id="drawer-templates" class="drawer">
+  <div class="drawer-head">
+    <h3>模板库</h3>
+    <button class="btn pill small ghost" data-close>关闭</button>
+  </div>
+  <button id="btn-upload-template" class="btn pill solid">上传模板</button>
+  <ul id="template-list" class="item-list empty-hint" data-empty="还没有模板，上传单位范本即可沉淀为资产"></ul>
+  <div class="drawer-subhead">内置规则集</div>
+  <div class="builtin-ruleset-row">
+    <select id="builtin-ruleset-select" title="内置规则集"></select>
+    <button id="btn-apply-ruleset" class="btn pill small">一键重排</button>
+  </div>
+</dialog>
+
+<!-- 抽屉：版本时间线 -->
+<dialog id="drawer-versions" class="drawer">
+  <div class="drawer-head">
+    <h3>版本时间线</h3>
+    <button class="btn pill small ghost" data-close>关闭</button>
+  </div>
+  <ul id="version-list" class="item-list empty-hint" data-empty="每次修改自动存版本，可随时回滚"></ul>
+</dialog>
 
 <!-- 模板详情 / 实例化对话框 -->
 <dialog id="template-dialog" class="modal">
@@ -114,6 +154,6 @@
   </div>
 </dialog>
 
-<script src="app.js"></script>
+<script type="module" src="app.js"></script>
 </body>
 </html>

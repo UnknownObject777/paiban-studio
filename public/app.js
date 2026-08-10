@@ -1,23 +1,136 @@
-// app.js — 三栏工作台前端逻辑（纯 JS，无框架，R1）。
-// 状态：currentDocId / templates / docs / versions；全部经 window.paiban（preload 白名单）与主进程通信。
+// app.js — 两相交互前端（issue #31：landing 居中对话窗 → 编辑态「对话左移 + 大预览」）。
+// ES module：交互状态全部收敛到 src/ui/conversation-flow.ts 状态机（经 dist 编译产物 import），
+// 本文件只做 DOM 渲染与 IPC 接线。全部后端能力经 window.paiban（preload 白名单）。
+
+import { createFlow, reduce, deriveProgress } from '../dist/src/ui/conversation-flow.js';
 
 const $ = (sel) => document.querySelector(sel);
 
-const state = {
-  currentDocId: null,
+let flow = createFlow();
+
+const ui = {
   previewReady: false,
   renderTimer: null,
-  assistantMsg: null, // 流式累积中的 assistant 消息节点
-  busy: false,
+  itemNodes: new Map(), // ChatItem.id → DOM 节点（瀑布流增量渲染）
 };
+
+function dispatch(event) {
+  flow = reduce(flow, event);
+  render();
+}
+
+// ---- 渲染入口 ----
+
+function render() {
+  renderPhase();
+  renderItems();
+  renderProgress();
+  renderBusy();
+}
+
+function renderPhase() {
+  const app = $('#app');
+  const editing = flow.phase === 'editing';
+  if (app.dataset.phase !== flow.phase) {
+    app.dataset.phase = flow.phase;
+    $('#landing').classList.toggle('hidden', editing);
+    $('#workbench').classList.toggle('hidden', !editing);
+    // 对话窗随相位迁移：landing 居中 ↔ 编辑态列底
+    $(editing ? '#editing-input-slot' : '#landing-input-slot').appendChild($('#chat-form'));
+  }
+  if (editing) {
+    $('#current-doc-name').textContent = flow.docName || '';
+    $('#current-doc-name').title = flow.docName || '';
+  }
+  $('#chat-input').placeholder = editing ? '对当前文档说点什么…' : '打开文档后，对 AI 说你想怎么排…';
+}
+
+// ---- 瀑布流条目（增量：只增不删，按 id 复用节点） ----
+
+function renderItems() {
+  const stream = $('#chat-stream');
+  for (const item of flow.items) {
+    let node = ui.itemNodes.get(item.id);
+    if (!node) {
+      node = createItemNode(item);
+      ui.itemNodes.set(item.id, node);
+      stream.appendChild(node);
+    }
+    updateItemNode(node, item);
+  }
+  // 只在内容增长时吸底
+  const last = flow.items[flow.items.length - 1];
+  if (last) ui.itemNodes.get(last.id)?.scrollIntoView({ block: 'end' });
+}
+
+function createItemNode(item) {
+  const div = document.createElement('div');
+  if (item.kind === 'user' || item.kind === 'assistant' || item.kind === 'error') {
+    div.className = `msg ${item.kind}`;
+  } else if (item.kind === 'tool') {
+    div.className = 'tool-chip';
+  } else if (item.kind === 'version') {
+    div.className = 'version-chip';
+  }
+  return div;
+}
+
+function updateItemNode(node, item) {
+  if (item.kind === 'user' || item.kind === 'error') {
+    node.textContent = item.kind === 'error' ? '出错了：' + item.message : item.text;
+  } else if (item.kind === 'assistant') {
+    node.textContent = item.text;
+    node.classList.toggle('streaming', item.streaming);
+  } else if (item.kind === 'tool') {
+    node.className = `tool-chip ${item.status}`;
+    const tail = item.status === 'running' ? (item.args || '')
+      : [item.summary || '', item.status === 'done' ? '✓' : '✗'].filter(Boolean).join(' ');
+    node.innerHTML = `<span class="dot"></span><span>${escapeHtml(item.label)}</span><span class="dim">${escapeHtml(tail)}</span>`;
+  } else if (item.kind === 'version') {
+    node.textContent = `已存版本 ${item.versionId}${item.note ? ' · ' + item.note : ''}`;
+  }
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// ---- 进度条（用户可感知的工作进度，全部由状态机推导） ----
+
+function renderProgress() {
+  const p = deriveProgress(flow);
+  const bar = $('#progress-bar');
+  bar.classList.toggle('hidden', !p.visible);
+  if (!p.visible) return;
+  bar.classList.toggle('active', p.active);
+  $('#progress-label').textContent = p.active
+    ? p.currentLabel
+    : p.failedCount > 0
+      ? `已停止 · ${p.failedCount} 步失败`
+      : `完成 · 共 ${p.steps.length} 步`;
+  const ol = $('#progress-steps');
+  ol.innerHTML = '';
+  for (const s of p.steps) {
+    const li = document.createElement('li');
+    li.className = `progress-step ${s.status}`;
+    li.textContent = s.label + (s.status === 'error' && s.summary ? `（${s.summary}）` : '');
+    ol.appendChild(li);
+  }
+}
+
+function renderBusy() {
+  $('#btn-send').classList.toggle('hidden', flow.busy);
+  $('#btn-abort').classList.toggle('hidden', !flow.busy);
+  $('#chat-input').disabled = flow.busy;
+}
 
 // ---- 预览（防抖刷新，D4：编辑 → ArrayBuffer → iframe） ----
 
 function refreshPreview() {
-  if (!state.currentDocId) return;
-  clearTimeout(state.renderTimer);
-  state.renderTimer = setTimeout(async () => {
-    const buffer = await window.paiban.getBuffer(state.currentDocId);
+  if (!flow.docId) return;
+  clearTimeout(ui.renderTimer);
+  ui.renderTimer = setTimeout(async () => {
+    const buffer = await window.paiban.getBuffer(flow.docId);
     const frame = $('#preview-frame');
     $('#preview-placeholder').classList.add('hidden');
     frame.classList.remove('hidden');
@@ -26,103 +139,45 @@ function refreshPreview() {
 }
 
 window.addEventListener('message', (ev) => {
-  if (ev.data?.type === 'preview-ready') {
-    state.previewReady = true;
-  }
+  if (ev.data?.type === 'preview-ready') ui.previewReady = true;
 });
 
-// ---- 对话流 ----
+// ---- agent 事件流 → 状态机（流式瀑布 + 进度推导） ----
 
-function addMsg(role, text) {
-  $('#chat-empty')?.remove();
-  const div = document.createElement('div');
-  div.className = `msg ${role}`;
-  div.textContent = text;
-  $('#chat-stream').appendChild(div);
-  div.scrollIntoView({ block: 'end' });
-  return div;
-}
-
-function addToolChip(name, summary, isError = false) {
-  $('#chat-empty')?.remove();
-  const chip = document.createElement('div');
-  chip.className = 'tool-chip' + (isError ? ' error' : '');
-  chip.innerHTML = `<span class="dot"></span><span>${escapeHtml(name)}</span><span class="dim">${escapeHtml(summary || '')}</span>`;
-  $('#chat-stream').appendChild(chip);
-  chip.scrollIntoView({ block: 'end' });
-  return chip;
-}
-
-function addVersionChip(version, note) {
-  const chip = document.createElement('div');
-  chip.className = 'version-chip';
-  chip.textContent = `已存版本 ${version.id}${note ? ' · ' + note : ''}`;
-  $('#chat-stream').appendChild(chip);
-  chip.scrollIntoView({ block: 'end' });
-}
-
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
-
-function setBusy(busy) {
-  state.busy = busy;
-  $('#btn-send').classList.toggle('hidden', busy);
-  $('#btn-abort').classList.toggle('hidden', !busy);
-  $('#chat-input').disabled = busy;
-}
-
-// agent 事件流
 window.paiban.onAgentEvent((event) => {
-  if (event.type === 'text_delta') {
-    if (!state.assistantMsg) state.assistantMsg = addMsg('assistant', '');
-    state.assistantMsg.textContent += event.delta;
-    state.assistantMsg.scrollIntoView({ block: 'end' });
-  } else if (event.type === 'tool_start') {
-    state.assistantMsg = null; // 工具调用切断当前流式消息
-    addToolChip(event.name, event.args);
-  } else if (event.type === 'tool_end') {
-    addToolChip(`${event.name} ✓`, event.summary, event.isError);
-    if (event.name === 'doc_edit' && !event.isError) {
-      refreshPreview();
-      loadVersions();
-    }
-    if (event.name === 'version_store') {
-      refreshPreview();
-      loadVersions();
-    }
-  } else if (event.type === 'done') {
-    state.assistantMsg = null;
-    setBusy(false);
+  dispatch(event);
+  if (event.type === 'tool_end' && (event.name === 'doc_edit' || event.name === 'version_store') && !event.isError) {
+    refreshPreview();
+    loadVersions();
+  }
+  if (event.type === 'done') {
     refreshPreview();
     loadVersions();
     loadDocuments();
-  } else if (event.type === 'error') {
-    addMsg('error', '出错了：' + event.message);
-    setBusy(false);
   }
 });
+
+// ---- 对话发送 / 中断 ----
 
 $('#chat-form').addEventListener('submit', async (ev) => {
   ev.preventDefault();
   const input = $('#chat-input');
   const text = input.value.trim();
-  if (!text || state.busy) return;
-  if (!state.currentDocId) {
-    addMsg('error', '请先在左栏打开或选择一篇工作文档。');
+  if (!text || flow.busy) return;
+  if (!flow.docId) {
+    dispatch({ type: 'send', text }); // 状态机落「请先打开文档」错误卡
     return;
   }
   input.value = '';
-  addMsg('user', text);
-  setBusy(true);
-  const r = await window.paiban.agentSend(state.currentDocId, text);
-  if (!r.ok) {
-    addMsg('error', r.error || 'agent 发送失败');
-    setBusy(false);
-  }
+  dispatch({ type: 'send', text });
+  const r = await window.paiban.agentSend(flow.docId, text);
+  if (!r.ok) dispatch({ type: 'error', message: r.error || 'agent 发送失败' });
 });
 
-$('#btn-abort').addEventListener('click', () => window.paiban.agentAbort());
+$('#btn-abort').addEventListener('click', () => {
+  window.paiban.agentAbort();
+  dispatch({ type: 'abort' });
+});
 
 // 空态示例指令 chip：点击填入输入框并聚焦
 document.querySelectorAll('.suggest-chip').forEach((chip) => {
@@ -133,7 +188,41 @@ document.querySelectorAll('.suggest-chip').forEach((chip) => {
   });
 });
 
+// ---- 相位切换 ----
+
+$('#btn-back').addEventListener('click', () => {
+  dispatch({ type: 'back_to_landing' });
+  renderRecents();
+});
+
+// 窄屏 对话/预览 tab 切换
+document.querySelectorAll('.view-tab').forEach((tab) => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.view-tab').forEach((t) => t.classList.toggle('active', t === tab));
+    $('#workbench').dataset.tab = tab.dataset.tab;
+  });
+});
+
 // ---- 文档 ----
+
+async function openDocFlow(openResult) {
+  if (!openResult) return;
+  dispatch({ type: 'doc_opened', docId: openResult.docId, name: openResult.name ?? openResult.docId, versionId: openResult.version?.id ?? openResult.head });
+  $('#btn-download').disabled = false;
+  await Promise.all([loadDocuments(), loadVersions()]);
+  refreshPreview();
+}
+
+async function openDocViaDialog() {
+  const r = await window.paiban.openDialog();
+  await openDocFlow(r);
+}
+
+$('#btn-open-doc').addEventListener('click', async () => {
+  await openDocViaDialog();
+  $('#drawer-docs').close();
+});
+$('#btn-open-doc-landing').addEventListener('click', openDocViaDialog);
 
 async function loadDocuments() {
   const docs = await window.paiban.listDocuments();
@@ -141,41 +230,51 @@ async function loadDocuments() {
   ul.innerHTML = '';
   for (const d of docs) {
     const li = document.createElement('li');
-    li.className = 'item' + (d.docId === state.currentDocId ? ' active' : '');
+    li.className = 'item' + (d.docId === flow.docId ? ' active' : '');
     li.innerHTML = `<span class="name">${escapeHtml(d.name)}</span>
       <span class="meta">${d.head} · ${d.versionCount} 个版本</span>`;
-    li.addEventListener('click', () => {
-      state.currentDocId = d.docId;
-      loadDocuments();
-      loadVersions();
-      refreshPreview();
-      $('#btn-download').disabled = false;
+    li.addEventListener('click', async () => {
+      await openDocFlow({ docId: d.docId, name: d.name, head: d.head });
+      $('#drawer-docs').close();
     });
     ul.appendChild(li);
   }
+  renderRecents(docs);
 }
 
-$('#btn-open-doc').addEventListener('click', async () => {
-  const r = await window.paiban.openDialog();
-  if (!r) return;
-  state.currentDocId = r.docId;
-  addVersionChip(r.version, '已上传（原稿未动）');
-  $('#btn-download').disabled = false;
-  await loadDocuments();
-  await loadVersions();
-  refreshPreview();
-});
+// landing 最近文档：最多 4 篇，点击进入编辑态
+function renderRecents(docs) {
+  const wrap = $('#landing-recents');
+  wrap.innerHTML = '';
+  const list = (docs ?? []).slice(0, 4);
+  if (!list.length) return;
+  const label = document.createElement('p');
+  label.className = 'dim recents-label';
+  label.textContent = '继续上次的工作';
+  wrap.appendChild(label);
+  const row = document.createElement('div');
+  row.className = 'recents-row';
+  for (const d of list) {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'suggest-chip';
+    chip.textContent = d.name;
+    chip.addEventListener('click', () => openDocFlow({ docId: d.docId, name: d.name, head: d.head }));
+    row.appendChild(chip);
+  }
+  wrap.appendChild(row);
+}
 
 $('#btn-download').addEventListener('click', async () => {
-  if (!state.currentDocId) return;
-  await window.paiban.download(state.currentDocId);
+  if (!flow.docId) return;
+  await window.paiban.download(flow.docId);
 });
 
-// ---- 版本时间线 ----
+// ---- 版本时间线（抽屉） ----
 
 async function loadVersions() {
-  if (!state.currentDocId) return;
-  const versions = await window.paiban.listVersions(state.currentDocId);
+  if (!flow.docId) return;
+  const versions = await window.paiban.listVersions(flow.docId);
   const ul = $('#version-list');
   ul.innerHTML = '';
   for (const v of [...versions].reverse()) {
@@ -190,27 +289,27 @@ async function loadVersions() {
         <button class="btn pill small" data-act="download">下载</button>
       </span>`;
     li.querySelector('[data-act="preview"]').addEventListener('click', async () => {
-      const buffer = await window.paiban.getBuffer(state.currentDocId, v.id);
+      const buffer = await window.paiban.getBuffer(flow.docId, v.id);
       const frame = $('#preview-frame');
       $('#preview-placeholder').classList.add('hidden');
       frame.classList.remove('hidden');
       frame.contentWindow.postMessage({ type: 'render', buffer }, '*', [buffer]);
     });
     li.querySelector('[data-act="rollback"]').addEventListener('click', async () => {
-      await window.paiban.rollback(state.currentDocId, v.id);
-      addVersionChip({ id: v.id }, `回滚到 ${v.id}`);
+      await window.paiban.rollback(flow.docId, v.id);
+      dispatch({ type: 'version_note', versionId: v.id, note: `回滚到 ${v.id}` });
       await loadVersions();
       await loadDocuments();
       refreshPreview();
     });
     li.querySelector('[data-act="download"]').addEventListener('click', async () => {
-      await window.paiban.download(state.currentDocId, v.id);
+      await window.paiban.download(flow.docId, v.id);
     });
     ul.appendChild(li);
   }
 }
 
-// ---- 模板 ----
+// ---- 模板（抽屉） ----
 
 async function loadTemplates() {
   const templates = await window.paiban.listTemplates();
@@ -229,7 +328,7 @@ async function loadTemplates() {
 $('#btn-upload-template').addEventListener('click', async () => {
   const r = await window.paiban.uploadTemplate();
   if (!r) return;
-  addVersionChip({ id: '模板' }, `已解析：${r.extracted.join('/')}`);
+  dispatch({ type: 'version_note', versionId: '模板', note: `已解析：${r.extracted.join('/')}` });
   await loadTemplates();
 });
 
@@ -275,15 +374,12 @@ $('#btn-instantiate').addEventListener('click', async () => {
   });
   const r = await window.paiban.instantiateTemplate(dialogTemplateId, values);
   $('#template-dialog').close();
-  state.currentDocId = r.docId;
-  $('#btn-download').disabled = false;
-  addVersionChip(r.version, '从模板实例化');
-  await loadDocuments();
-  await loadVersions();
-  refreshPreview();
+  $('#drawer-templates').close();
+  await openDocFlow({ docId: r.docId, name: r.name ?? r.docId, versionId: r.version?.id });
+  dispatch({ type: 'version_note', versionId: r.version?.id ?? '—', note: '从模板实例化' });
 });
 
-// ---- 内置规则集（手写资产，一键重排当前文档） ----
+// ---- 内置规则集（模板抽屉内，一键重排当前文档） ----
 
 async function loadBuiltinRulesets() {
   const rulesets = await window.paiban.listBuiltinRulesets();
@@ -306,22 +402,32 @@ async function loadBuiltinRulesets() {
 $('#btn-apply-ruleset').addEventListener('click', async () => {
   const rulesetId = $('#builtin-ruleset-select').value;
   if (!rulesetId) return;
-  if (!state.currentDocId) {
-    addMsg('assistant', '请先打开一篇文档，再按内置规则集重排。');
-    return;
-  }
-  const r = await window.paiban.applyBuiltinRuleset(state.currentDocId, rulesetId);
+  if (!flow.docId) return;
+  const r = await window.paiban.applyBuiltinRuleset(flow.docId, rulesetId);
+  $('#drawer-templates').close();
   if (r.errors?.length) {
-    addMsg('assistant', `按 ${rulesetId} 重排完成，但有 ${r.errors.length} 条命令失败：${r.errors[0].error || ''}`);
+    dispatch({ type: 'error', message: `按 ${rulesetId} 重排完成，但有 ${r.errors.length} 条命令失败：${r.errors[0].error || ''}` });
   } else {
-    addVersionChip(r.version, `按内置规则集 ${rulesetId} 重排`);
+    dispatch({ type: 'version_note', versionId: r.version?.id ?? '—', note: `按内置规则集 ${rulesetId} 重排` });
   }
   await loadVersions();
   refreshPreview();
 });
 
+// ---- 抽屉与对话框 ----
+
+const DRAWERS = { docs: '#drawer-docs', templates: '#drawer-templates', versions: '#drawer-versions' };
+
+$('#btn-drawer-docs').addEventListener('click', async () => { await loadDocuments(); $(DRAWERS.docs).showModal(); });
+$('#btn-drawer-templates').addEventListener('click', async () => { await loadTemplates(); $(DRAWERS.templates).showModal(); });
+$('#btn-drawer-versions').addEventListener('click', async () => { await loadVersions(); $(DRAWERS.versions).showModal(); });
+
 document.querySelectorAll('[data-close]').forEach((btn) => {
   btn.addEventListener('click', () => btn.closest('dialog').close());
+});
+// 点击抽屉/对话框背板关闭
+document.querySelectorAll('dialog').forEach((dlg) => {
+  dlg.addEventListener('click', (ev) => { if (ev.target === dlg) dlg.close(); });
 });
 
 // ---- 模型设置 / 状态 ----
@@ -359,7 +465,7 @@ $('#btn-save-config').addEventListener('click', async () => {
   if (key) patch.apiKey = key;
   await window.paiban.setConfig(patch);
   $('#settings-dialog').close();
-  addMsg('assistant', '配置已保存。重启应用后 agent 以新配置初始化。');
+  dispatch({ type: 'version_note', versionId: '配置', note: '模型配置已保存，重启应用后生效' });
 });
 
 // ---- 启动 ----

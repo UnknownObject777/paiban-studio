@@ -40,3 +40,5 @@
 2026-08-10 已按本提示词完成主页美化：对话空态改为 onboarding hero（大标题 + 可点击示例指令 chip），顶栏增加 mono 技术标签，列宽与滚动细节优化。改动文件：`public/index.html`、`public/styles.css`、`public/app.js`。
 
 2026-08-10 二轮迭代：用户反馈黑白硬分割线太生硬，明确放宽「chrome 严格黑白」约束，整体切换为**水墨风**——宣纸底色（`#f5f1e8` 双层淡墨渐变纹理）、墨色层次（`rgba(42,42,46,*)` 代替纯黑）、朱砂印章（brand 前 `排` 字章 + eyebrow 朱砂色）、楷体标题/宋体正文、硬黑线全部改为淡墨细线与虚线。改动文件：`public/styles.css`（整体重写）、`public/index.html`（加印章元素）。后续如继续迭代界面，以水墨风为当前生效风格，上文 Figma 黑白约束不再作为硬约束。
+
+2026-08-11 三轮迭代（issue #31）：交互逻辑重写为两相——landing 态（类 ChatGPT 首屏，唯一居中对话窗 + 打开 docx 主按钮 + 最近文档）与编辑态（对话列左移收窄 400px + 右侧大预览，模板/文档/版本收进右侧 slide-over 抽屉）。对话交互状态收敛到纯状态机 `src/ui/conversation-flow.ts`（reducer + 进度推导），`public/app.js` 改为 ES module 只做渲染与 IPC 接线；agent 事件以瀑布流渲染，工具调用映射为中文步骤卡并驱动对话列顶部的可感知进度条。水墨风 tokens 全部保留。改动文件：`public/index.html`、`public/styles.css`、`public/app.js`、`src/ui/conversation-flow.ts`（新增）、`test/conversation-flow.test.ts`（新增）。
