@@ -17,14 +17,14 @@
     "test:workspace": "npm run build && node --test dist/test/workspace.test.js",
     "test:e2e-agent": "npm run build && node --test dist/test/e2e-agent.test.js",
     "dist": "npm run build && electron-builder",
-    "preview": "npm run build && node dist/preview/serve.js"
+    "preview": "npm run build && node dist/preview/serve.js",
+    "fetch:onlyoffice": "node scripts/fetch-onlyoffice-sdk.mjs"
   },
   "engines": {
     "node": ">=22.19"
   },
   "dependencies": {
     "@earendil-works/pi-coding-agent": "^0.83.0",
-    "docx-preview": "^0.4.0",
     "fast-xml-parser": "^5.10.1",
     "pizzip": "^3.2.0"
   },

@@ -5,6 +5,9 @@ out/
 .DS_Store
 .claude/worktrees/
 reference/
+# OnlyOffice 静态 SDK 资产（~600MB，由 npm run fetch:onlyoffice 拉取，不入 git）
+public/packages/
+.oo-staging/
 *.docx
 !test/fixtures/*.docx
 !test/fixtures/**/*.docx

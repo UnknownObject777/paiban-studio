@@ -124,6 +124,15 @@ $('#chat-form').addEventListener('submit', async (ev) => {
 
 $('#btn-abort').addEventListener('click', () => window.paiban.agentAbort());
 
+// 空态示例指令 chip：点击填入输入框并聚焦
+document.querySelectorAll('.suggest-chip').forEach((chip) => {
+  chip.addEventListener('click', () => {
+    const input = $('#chat-input');
+    input.value = chip.dataset.prompt || '';
+    input.focus();
+  });
+});
+
 // ---- 文档 ----
 
 async function loadDocuments() {

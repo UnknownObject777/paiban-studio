@@ -10,7 +10,7 @@
 <div id="app">
   <!-- 顶栏 -->
   <header id="topbar">
-    <div class="brand">排版工作台</div>
+    <div class="brand"><span class="seal">排</span>排版工作台<span class="brand-tag">PAIBAN STUDIO</span></div>
     <div class="safety-hint" id="safety-hint" title="所有修改只作用于工作副本，原始文件不会被改动">只处理副本 · 原稿不动 · 全程本地</div>
     <div class="spacer"></div>
     <div id="model-status" class="model-status pill">模型检测中…</div>
@@ -44,8 +44,15 @@
     <main id="center">
       <div id="chat-stream" class="chat-stream">
         <div class="chat-empty" id="chat-empty">
-          <p class="big">用自然语言指挥 AI 排版</p>
-          <p class="dim">「标题改成黑体三号居中」 · 「正文统一仿宋四号、行距 28 磅」 · 「按《通知》模板的样式排」</p>
+          <p class="eyebrow">AI TYPESETTING ENGINE</p>
+          <p class="big">用自然语言<br>指挥 AI 排版</p>
+          <p class="dim">打开一篇排版混乱的 docx，然后直接说你想怎么排</p>
+          <div class="suggest-chips">
+            <button type="button" class="suggest-chip" data-prompt="标题改成黑体三号居中">「标题改成黑体三号居中」</button>
+            <button type="button" class="suggest-chip" data-prompt="正文统一仿宋四号，行距 28 磅">「正文统一仿宋四号、行距 28 磅」</button>
+            <button type="button" class="suggest-chip" data-prompt="按《通知》模板的样式排">「按《通知》模板的样式排」</button>
+          </div>
+          <p class="dim small-note">所有修改只作用于工作副本，原始文件不会被改动</p>
         </div>
       </div>
       <form id="chat-form">
@@ -64,7 +71,7 @@
         </div>
         <div id="preview-wrap">
           <div id="preview-placeholder" class="dim">打开文档后此处实时渲染排版效果</div>
-          <iframe id="preview-frame" src="preview.html" title="文档预览" class="hidden"></iframe>
+          <iframe id="preview-frame" src="preview.html?x2t-only" title="文档预览" class="hidden"></iframe><!-- TEMP: x2t 隔离测试，定位 OOM 后还原 -->
         </div>
       </section>
       <section class="panel versions-panel">

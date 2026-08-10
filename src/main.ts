@@ -6,8 +6,10 @@
 //   3. 数据目录：<userData>/paiban-studio（对象存储 + 版本链 + 模板库 + 配置）
 
 import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
-import { join } from 'node:path';
-import { readFileSync, writeFileSync, appendFileSync, mkdirSync } from 'node:fs';
+import { join, normalize, sep, extname } from 'node:path';
+import { readFileSync, writeFileSync, appendFileSync, mkdirSync, createReadStream, statSync } from 'node:fs';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { fileURLToPath } from 'node:url';
 import { Workspace } from './server/workspace.js';
 
@@ -15,6 +17,65 @@ const __dirname = fileURLToPath(new URL('.', import.meta.url));
 // 编译产物位于 dist/src/，项目根在其上两级（public/index.html、templates/ 等均位于项目根）。
 const ROOT = join(__dirname, '../..');
 const SMOKE = process.env.PAIBAN_SMOKE === '1';
+
+// ---- 回环静态服务器（D4 预览替换：OnlyOffice 静态 SDK）----
+// OnlyOffice SDK 运行时要动态加载脚本分块 / Web Worker / x2t wasm（fetch/XHR），
+// file:// 下 Chromium 禁止这些请求；paiban:// 自定义 scheme 实测在 module worker 内
+// 出现安全上下文缺失（DecompressionStream 不可用）与 wasm 内存分配 OOM，因此渲染层
+// 整体改走 127.0.0.1 回环 HTTP（随机端口、仅监听本机、仅放行 public/ 与 dist/）。
+// 缓存策略：SDK 资产（public/packages/，版本目录内容不变）长缓存；其余 no-cache，
+// 避免升级/重建后磁盘缓存里的旧模块脚本被重用（调试中实测踩到）。
+const STATIC_MIME: Record<string, string> = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.wasm': 'application/wasm',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.ico': 'image/x-icon',
+  '.ttf': 'font/ttf',
+  '.otf': 'font/otf',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2',
+  '.txt': 'text/plain; charset=utf-8',
+};
+
+function startStaticServer(): Promise<number> {
+  const allowedRoots = [normalize(join(ROOT, 'public')) + sep, normalize(join(ROOT, 'dist')) + sep];
+  const immutablePrefix = normalize(join(ROOT, 'public', 'packages')) + sep;
+  const server = createServer((req, res) => {
+    const rel = decodeURIComponent(new URL(req.url ?? '/', 'http://127.0.0.1').pathname).replace(/^\/+/, '');
+    const filePath = normalize(join(ROOT, rel));
+    if (!allowedRoots.some((root) => filePath.startsWith(root))) {
+      res.writeHead(403).end('forbidden');
+      return;
+    }
+    let size: number;
+    try {
+      size = statSync(filePath).size;
+    } catch {
+      res.writeHead(404).end('not found');
+      return;
+    }
+    res.writeHead(200, {
+      'Content-Type': STATIC_MIME[extname(filePath).toLowerCase()] ?? 'application/octet-stream',
+      'Content-Length': size,
+      'Cache-Control': filePath.startsWith(immutablePrefix) ? 'public, max-age=31536000, immutable' : 'no-cache',
+    });
+    createReadStream(filePath).pipe(res);
+  });
+  return new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => resolve((server.address() as AddressInfo).port));
+  });
+}
+
+let staticPort = 0;
 
 // ---- 崩溃可观测性（issue #30）----
 // 背景：#19 演示中 GUI 三次静默退出，stdout/stderr 无任何日志，headless smoke 正常，
@@ -185,7 +246,14 @@ async function createWindow(): Promise<void> {
     show: !SMOKE,
   });
   win.removeMenu();
-  await win.loadFile(join(ROOT, 'public/index.html'));
+  if (process.env.PAIBAN_DEVTOOLS === '1') {
+    win.webContents.openDevTools({ mode: 'detach' });
+    // TEMP 调试：渲染层（含 iframe / worker）console 全量写入 crash.log
+    win.webContents.on('console-message', (_e, level, message, line, sourceId) => {
+      crashLog(`[renderer:${level}] ${message} (${sourceId}:${line})`);
+    });
+  }
+  await win.loadURL(`http://127.0.0.1:${staticPort}/public/index.html`);
   crashLog('[window] renderer 加载完成');
   wireAgentEvents(win);
 }
@@ -231,6 +299,10 @@ async function runSmoke(): Promise<void> {
 app.whenReady().then(async () => {
   workspace = new Workspace(dataDir());
   crashLog(`[app:ready] workspace=${dataDir()}`);
+  if (!SMOKE) {
+    staticPort = await startStaticServer();
+    crashLog(`[static] 回环静态服务器 http://127.0.0.1:${staticPort}`);
+  }
   // agent-core 动态加载：SDK 缺失/无凭证时降级为不可用状态，工作台其余功能不受影响
   try {
     const { AgentBridge } = await import('./agent-core/bridge.js');
