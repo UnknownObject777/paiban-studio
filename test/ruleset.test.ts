@@ -40,6 +40,14 @@ test('内置规则集两文件组件键集与组件清单常量一致', () => {
   assert.equal(recognizers[PAGE_ID], undefined, 'recognizers.json 不得含 page 节');
 });
 
+test('内置实验报告默认规则集通过校验且组件键集一致', () => {
+  const { recognizers, styles } = loadRuleset(path.join(REPO_ROOT, 'templates', 'rulesets', 'lab-report-default'));
+  assert.deepEqual(validateRuleset(recognizers, styles), []);
+  assert.deepEqual(Object.keys(recognizers.components as Record<string, unknown>).sort(), [...COMPONENT_IDS].sort());
+  assert.deepEqual(Object.keys(styles.components as Record<string, unknown>).sort(), [...COMPONENT_IDS].sort());
+  assert.ok(styles[PAGE_ID], 'styles.json 必须含 page 节');
+});
+
 test('loadRuleset 对缺失文件给出可读错误', () => {
   assert.throws(
     () => loadRuleset(path.join(REPO_ROOT, 'templates', 'rulesets', 'no-such-set')),
