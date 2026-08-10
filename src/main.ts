@@ -7,7 +7,7 @@
 
 import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
 import { join } from 'node:path';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, appendFileSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { Workspace } from './server/workspace.js';
 
@@ -15,6 +15,57 @@ const __dirname = fileURLToPath(new URL('.', import.meta.url));
 // 编译产物位于 dist/src/，项目根在其上两级（public/index.html、templates/ 等均位于项目根）。
 const ROOT = join(__dirname, '../..');
 const SMOKE = process.env.PAIBAN_SMOKE === '1';
+
+// ---- 崩溃可观测性（issue #30）----
+// 背景：#19 演示中 GUI 三次静默退出，stdout/stderr 无任何日志，headless smoke 正常，
+// 疑似渲染进程崩溃或主进程未捕获异常。这里捕获关键异常/生命周期事件，统一写
+// stderr（终端启动时可见）与 <userData>/paiban-studio/crash.log（append + 时间戳）。
+
+function crashLog(line: string): void {
+  const msg = `[${new Date().toISOString()}] ${line}`;
+  try {
+    console.error(msg); // stderr 镜像
+    const dir = join(app.getPath('userData'), 'paiban-studio');
+    mkdirSync(dir, { recursive: true });
+    appendFileSync(join(dir, 'crash.log'), msg + '\n');
+  } catch {
+    /* 日志通道自身故障不致命 */
+  }
+}
+
+// 1) 主进程未捕获异常 / 未处理 Promise 拒绝。
+//    默认 Node 行为是打 stderr 后退出；这里先留证据再继续运行，避免演示中途直接消失。
+process.on('uncaughtException', (err) => {
+  crashLog(`[uncaughtException] ${err?.stack ?? String(err)}`);
+});
+process.on('unhandledRejection', (reason) => {
+  const detail = reason instanceof Error ? (reason.stack ?? String(reason)) : String(reason);
+  crashLog(`[unhandledRejection] ${detail}`);
+});
+
+// 2) 渲染进程 / 子进程消失（崩溃、OOM、被 kill 是「窗口无声消失」的头号嫌疑）。
+//    Electron ≥22 在 app 上也提供 render-process-gone（附带所属 webContents）。
+app.on('render-process-gone', (_e, _wc, details) => {
+  crashLog(`[app:render-process-gone] reason=${details.reason} exitCode=${details.exitCode}`);
+});
+// 兜底：任何 webContents（含未来新建窗口/DevTools）的渲染进程消失都记录。
+app.on('web-contents-created', (_e, contents) => {
+  contents.on('render-process-gone', (_ev, details) => {
+    crashLog(`[webContents:render-process-gone] reason=${details.reason} exitCode=${details.exitCode}`);
+  });
+});
+// 子进程（GPU / Utility 等，不含渲染进程）异常消失。
+app.on('child-process-gone', (_e, details) => {
+  crashLog(`[child-process-gone] type=${details.type} reason=${details.reason} exitCode=${details.exitCode} name=${details.name ?? '-'}`);
+});
+
+// 3) 退出生命周期：正常退出会走 before-quit → will-quit → quit 链。
+//    若 crash.log 里没有这条链而进程消失，即非优雅退出（崩溃/被杀），与 #19 现象吻合。
+app.on('before-quit', () => crashLog('[app:before-quit]'));
+app.on('will-quit', () => crashLog('[app:will-quit]'));
+app.on('quit', () => crashLog('[app:quit]'));
+
+crashLog(`[app:start] pid=${process.pid} electron=${process.versions.electron} node=${process.versions.node} smoke=${SMOKE}`);
 
 let workspace: Workspace;
 let agentBridge: any = null;
@@ -117,6 +168,7 @@ function wireAgentEvents(win: BrowserWindow): void {
 }
 
 async function createWindow(): Promise<void> {
+  crashLog('[window] createWindow');
   const win = new BrowserWindow({
     width: 1440,
     height: 900,
@@ -134,6 +186,7 @@ async function createWindow(): Promise<void> {
   });
   win.removeMenu();
   await win.loadFile(join(ROOT, 'public/index.html'));
+  crashLog('[window] renderer 加载完成');
   wireAgentEvents(win);
 }
 
@@ -177,6 +230,7 @@ async function runSmoke(): Promise<void> {
 
 app.whenReady().then(async () => {
   workspace = new Workspace(dataDir());
+  crashLog(`[app:ready] workspace=${dataDir()}`);
   // agent-core 动态加载：SDK 缺失/无凭证时降级为不可用状态，工作台其余功能不受影响
   try {
     const { AgentBridge } = await import('./agent-core/bridge.js');
@@ -198,5 +252,6 @@ app.whenReady().then(async () => {
 });
 
 app.on('window-all-closed', () => {
+  crashLog('[window-all-closed] 所有窗口已关闭');
   if (process.platform !== 'darwin') app.quit();
 });
