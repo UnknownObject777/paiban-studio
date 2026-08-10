@@ -4,19 +4,32 @@
 //   文档：uploadDocument / getDocumentBuffer / applyCommands（编辑 + 自动快照）/ outline / download
 //   版本：listVersions / getVersionBuffer / rollback
 //   模板：uploadTemplate / listTemplates / readTemplate / instantiateTemplate / templateRulesetCommands
+//   内置规则集：listBuiltinRulesets / builtinRulesetCommands（templates/rulesets/ 手写资产，#29）
 //   配置：LLM provider（界面配置 > 环境变量 > 默认值，R4）
 //
 // 安全约定（user story 16）：只处理上传副本（buffer 入库），原稿路径零改动。
 
 import { join } from 'node:path';
-import { mkdirSync, readFileSync, writeFileSync, existsSync, renameSync, rmSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync, existsSync, renameSync, rmSync, readdirSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { LocalFsObjectStore } from '../storage/objectStore.js';
 import { VersionStore } from '../storage/versionStore.js';
 import { TemplateStore } from '../templates/templateStore.js';
 import { applyEdits } from '../docx-core/applyEdits.js';
 import { dumpOutline } from '../docx-core/outline.js';
+import { loadRuleset } from '../ruleset/load.js';
+import { rulesetToCommands } from '../templates/rulesetToCommands.js';
 import type { EditCommand } from '../docx-core/applyEdits.js';
 import type { VersionEntry } from '../storage/versionStore.js';
+
+// 内置规则集目录：相对本模块定位项目根 templates/rulesets/。
+// 源码位于 src/server/（上两级）；编译产物位于 dist/src/server/（上三级）。
+// （与 templates/rulesetFromSample.ts 同款双路径 fallback）
+const HERE = fileURLToPath(new URL('.', import.meta.url));
+const BUILTIN_RULESETS_DIR = [
+  join(HERE, '../../templates/rulesets'),
+  join(HERE, '../../../templates/rulesets'),
+].find((p) => existsSync(p)) || join(HERE, '../../templates/rulesets');
 
 const DEFAULT_CONFIG = {
   provider: 'deepseek',
@@ -129,6 +142,34 @@ export class Workspace {
   /** 模板规则集 → 内核命令（"按《通知》模板排"）。 */
   templateRulesetCommands(templateId: string) {
     return this.templates.rulesetCommands(templateId);
+  }
+
+  // ---- 内置规则集（templates/rulesets/ 手写资产，反推链路的保底路径，issue #29） ----
+
+  /** 列出内置规则集：id + 描述（取 styles.json 的 description 字段）。 */
+  listBuiltinRulesets(): Array<{ id: string; description: string }> {
+    if (!existsSync(BUILTIN_RULESETS_DIR)) return [];
+    return readdirSync(BUILTIN_RULESETS_DIR, { withFileTypes: true })
+      .filter((d) => d.isDirectory() && existsSync(join(BUILTIN_RULESETS_DIR, d.name, 'styles.json')))
+      .map((d) => {
+        let description = '';
+        try {
+          description = (JSON.parse(readFileSync(join(BUILTIN_RULESETS_DIR, d.name, 'styles.json'), 'utf8')).description as string) || '';
+        } catch { /* 描述缺失不阻塞列出 */ }
+        return { id: d.name, description };
+      });
+  }
+
+  /** 内置规则集 → 内核命令（loadRuleset 校验 + rulesetToCommands 翻译，"按实验报告排版"）。 */
+  builtinRulesetCommands(rulesetId: string): EditCommand[] {
+    if (!/^[\w-]+$/.test(rulesetId)) throw new Error(`非法规则集 id：${rulesetId}`);
+    const dir = join(BUILTIN_RULESETS_DIR, rulesetId);
+    if (!existsSync(dir)) {
+      const known = this.listBuiltinRulesets().map((r) => r.id).join(', ') || '（无）';
+      throw new Error(`内置规则集不存在：${rulesetId}；可用：${known}`);
+    }
+    const { recognizers, styles } = loadRuleset(dir);
+    return rulesetToCommands(recognizers, styles);
   }
 
   // ---- 配置（R4：界面配置 > 环境变量 > 默认值） ----

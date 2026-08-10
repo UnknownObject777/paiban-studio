@@ -87,6 +87,14 @@ function registerWorkbenchIpc(): void {
   ipcMain.handle('workbench:instantiateTemplate', (_e, { templateId, values, name }) =>
     W().instantiateTemplate(templateId, values, name));
 
+  // 内置规则集（#29：手写规则集 → 一键重排）
+  ipcMain.handle('workbench:listBuiltinRulesets', () => W().listBuiltinRulesets());
+  ipcMain.handle('workbench:builtinRulesetCommands', (_e, { rulesetId }) => W().builtinRulesetCommands(rulesetId));
+  ipcMain.handle('workbench:applyBuiltinRuleset', (_e, { docId, rulesetId }) =>
+    W().applyCommands(docId, W().builtinRulesetCommands(rulesetId), {
+      source: 'ruleset', note: `按内置规则集 ${rulesetId} 重排`,
+    }));
+
   // 配置
   ipcMain.handle('workbench:getConfig', () => W().getConfig());
   ipcMain.handle('workbench:setConfig', (_e, patch) => W().setConfig(patch));

@@ -24,6 +24,11 @@ contextBridge.exposeInMainWorld('paiban', {
   instantiateTemplate: (templateId: string, values: Record<string, unknown>, name?: string) =>
     ipcRenderer.invoke('workbench:instantiateTemplate', { templateId, values, name }),
 
+  // 内置规则集
+  listBuiltinRulesets: () => ipcRenderer.invoke('workbench:listBuiltinRulesets'),
+  applyBuiltinRuleset: (docId: string, rulesetId: string) =>
+    ipcRenderer.invoke('workbench:applyBuiltinRuleset', { docId, rulesetId }),
+
   // 配置
   getConfig: () => ipcRenderer.invoke('workbench:getConfig'),
   setConfig: (patch: Record<string, unknown>) => ipcRenderer.invoke('workbench:setConfig', patch),

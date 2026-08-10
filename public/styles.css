@@ -109,6 +109,17 @@ body {
 
 /* ---- 列表 ---- */
 .item-list { list-style: none; display: flex; flex-direction: column; gap: var(--s1); }
+.builtin-ruleset-row { display: flex; gap: var(--s1); align-items: center; }
+.builtin-ruleset-row select {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 12px;
+  border: 1px solid var(--black);
+  border-radius: var(--radius-pill);
+  padding: 4px 12px;
+  background: var(--white);
+}
 .item-list.empty-hint:empty::after {
   content: attr(data-empty);
   font-size: 12px;

@@ -1,9 +1,10 @@
 // agent-core/tools.ts — 自研 agent 工具（spec 模块 2）。
 //
-// 三工具（+ 结构 dump 工具）全部收敛到 Workspace 服务层：
+// 工具（+ 结构 dump 工具）全部收敛到 Workspace 服务层：
 //   doc_outline    文档结构 dump（dump → batch 往返的 dump 端，D6）
 //   doc_edit       编辑命令批（走唯一 seam applyEdits + 自动快照）
 //   template_read  模板规则集 / 占位符 / 大纲读取
+//   ruleset_read   内置规则集（手写资产）列表 / 规则集命令读取（#29）
 //   version_store  版本列表 / 回滚
 //
 // 参数 schema 用纯 JSON Schema 对象（与 typebox 产出的 TSchema 运行时同构）。
@@ -138,6 +139,36 @@ export function createTools(workspace: Workspace): AgentTool[] {
           styles: t.styles,
           rulesetCommands: workspace.templateRulesetCommands(params.templateId),
         });
+      },
+    },
+    {
+      name: 'ruleset_read',
+      label: 'Builtin Ruleset Read',
+      description: '内置排版规则集（手写资产，质量保底）：不传 rulesetId 时列出全部内置规则集（id + 描述）；传入时返回该规则集可直接用于 doc_edit 的规则集命令（rulesetCommands）。',
+      promptSnippet: 'Read builtin formatting rulesets (hand-written, preferred over inferred ones)',
+      promptGuidelines: [
+        '用户说"按实验报告排版"→ ruleset_read 取 lab-report-default；"按公文排版"→ gongwen-default。优先用内置规则集，质量比上传模板反推的更可靠。',
+        '用法：ruleset_read 取 rulesetCommands，原样传给 doc_edit 的 commands。',
+      ],
+      parameters: {
+        type: 'object',
+        properties: {
+          rulesetId: { type: 'string', description: '内置规则集 ID（如 lab-report-default / gongwen-default）；省略则列出全部' },
+        },
+      },
+      executionMode: 'sequential',
+      async execute(_id: string, params: Record<string, any>) {
+        if (!params.rulesetId) {
+          return jsonResult({ rulesets: workspace.listBuiltinRulesets() });
+        }
+        try {
+          return jsonResult({
+            rulesetId: params.rulesetId,
+            rulesetCommands: workspace.builtinRulesetCommands(params.rulesetId),
+          });
+        } catch (err) {
+          return jsonResult({ error: (err as Error).message }, true);
+        }
       },
     },
     {

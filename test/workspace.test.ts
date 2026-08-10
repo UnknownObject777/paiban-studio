@@ -4,7 +4,7 @@
 //   上传 → 编辑（自动快照 + 版本 note 摘要）→ 大纲 → 版本列表 → 回滚 → 下载 buffer
 //   模板：上传 → 实例化 → 规则集命令
 //   配置优先级：界面配置 > 环境变量 > 默认值（R4）
-//   agent 四工具直接 execute（不依赖 LLM）：doc_outline / doc_edit / template_read / version_store
+//   agent 五工具直接 execute（不依赖 LLM）：doc_outline / doc_edit / template_read / ruleset_read / version_store
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -120,7 +120,7 @@ test('agent 工具：doc_outline → doc_edit → version_store 全链路（无 
   const byName = Object.fromEntries(tools.map((t) => [t.name, t]));
 
   // 白名单与串行约束（spec：裁剪内置工具 + sequential）
-  assert.deepEqual(tools.map((t) => t.name), ['doc_outline', 'doc_edit', 'template_read', 'version_store']);
+  assert.deepEqual(tools.map((t) => t.name), ['doc_outline', 'doc_edit', 'template_read', 'ruleset_read', 'version_store']);
   for (const t of tools) assert.equal(t.executionMode, 'sequential');
 
   // doc_outline
@@ -154,6 +154,44 @@ test('agent 工具：doc_outline → doc_edit → version_store 全链路（无 
   // template_read 列表
   const tplRes = await byName.template_read.execute('t6', {});
   assert.ok(Array.isArray(JSON.parse(tplRes.content[0].text).templates));
+  cleanup();
+});
+
+test('内置规则集：列出 → 读出 lab-report-default 命令 → ruleset_read 工具（#29）', async () => {
+  const { ws, cleanup } = freshWorkspace();
+
+  // 列表：两个手写规则集都在，带描述
+  const list = ws.listBuiltinRulesets();
+  const ids = list.map((r) => r.id);
+  assert.ok(ids.includes('gongwen-default') && ids.includes('lab-report-default'), `内置规则集: ${ids}`);
+  assert.ok(list.find((r) => r.id === 'lab-report-default')!.description.length > 0);
+
+  // 按 id 读出 rulesetCommands：normalize 含 title/heading1/body/caption/table 组件 + page 页面设置命令
+  const commands = ws.builtinRulesetCommands('lab-report-default');
+  const normalize = commands.find((c) => c.command === 'normalize');
+  assert.ok(normalize, '含 normalize 命令');
+  const names = (normalize.ruleset.rules as Array<{ name: string }>).map((r) => r.name);
+  for (const comp of ['title', 'heading1', 'body', 'caption', 'table']) {
+    assert.ok(names.includes(comp), `normalize 规则缺 ${comp}（实际: ${names}）`);
+  }
+  const pageCmd = commands.find((c) => c.command === 'set' && c.path === '/body/sectPr');
+  assert.ok(pageCmd, '含页面设置命令');
+  assert.ok(pageCmd.props.marginsCm, '页面命令含页边距');
+
+  // 未知 id：报错且提示可用列表
+  assert.throws(() => ws.builtinRulesetCommands('no-such-ruleset'), /内置规则集不存在.*lab-report-default/s);
+
+  // ruleset_read 工具：不传 id 列出；传 id 返回命令；坏 id 走 isError
+  const byName = Object.fromEntries(createTools(ws).map((t) => [t.name, t]));
+  const listRes = await byName.ruleset_read.execute('r1', {});
+  const listData = JSON.parse(listRes.content[0].text);
+  assert.ok(listData.rulesets.some((r: { id: string }) => r.id === 'lab-report-default'));
+  const readRes = await byName.ruleset_read.execute('r2', { rulesetId: 'lab-report-default' });
+  const readData = JSON.parse(readRes.content[0].text);
+  assert.equal(readRes.isError, false);
+  assert.ok(readData.rulesetCommands.some((c: { command: string }) => c.command === 'normalize'));
+  const badRes = await byName.ruleset_read.execute('r3', { rulesetId: 'no-such-ruleset' });
+  assert.equal(badRes.isError, true);
   cleanup();
 });
 

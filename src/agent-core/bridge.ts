@@ -1,7 +1,7 @@
 // agent-core/bridge.ts — pi agent 接入层（spec 模块 2，调研 #3 路径 1：SDK 主进程内嵌）。
 //
 // 职责：
-//   - createAgentSession() 内嵌，tools 白名单只放自研四工具（裁剪内置文件工具，防绕过编辑内核）
+//   - createAgentSession() 内嵌，tools 白名单只放自研五工具（裁剪内置文件工具，防绕过编辑内核）
 //   - LLM provider（R4）：Anthropic（apiKey 直连）/ OpenAI 兼容端点（models.json 声明，含
 //     DeepSeek/Kimi/Qwen/Ollama/vLLM/本地网关）；界面配置 > 环境变量 > 默认值
 //   - 事件流翻译为渲染层友好事件（text_delta / tool_start / tool_end / done / error）
@@ -20,7 +20,7 @@ const SYSTEM_PRIMER = `你是「排版工作台」的文档排版助手，专门
 2. 修改前先调用 doc_outline 获取段落路径，按路径精确寻址（/body/p[N]/r[M]）。
 3. 每次 doc_edit 成功后系统自动保存新版本；改坏了可用 version_store 回滚。
 4. 工具调用失败时阅读错误里的 suggestion 字段并自我修正后重试。
-5. 用户说"按某模板排"时：template_read 取 rulesetCommands，原样传给 doc_edit。
+5. 用户说"按实验报告排版"→ 用 ruleset_read 取内置规则集 lab-report-default；"按公文排版"→ gongwen-default；"按某个上传的模板排"→ template_read。取到 rulesetCommands 后原样传给 doc_edit。内置规则集是手写资产，优先于上传模板反推的规则集。
 
 中文公文排版常识：
 - 字号：三号=16pt、小三=15pt、四号=14pt、小四=12pt、五号=10.5pt
@@ -135,7 +135,7 @@ export class AgentBridge {
         modelRuntime,
         model,
         sessionManager: sdk.SessionManager.inMemory(),
-        tools: ['doc_outline', 'doc_edit', 'template_read', 'version_store'], // 白名单：只自研工具
+        tools: ['doc_outline', 'doc_edit', 'template_read', 'ruleset_read', 'version_store'], // 白名单：只自研工具
         customTools: createTools(this.workspace),
       });
       this.session = session;

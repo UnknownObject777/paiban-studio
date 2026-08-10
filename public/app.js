@@ -274,6 +274,43 @@ $('#btn-instantiate').addEventListener('click', async () => {
   refreshPreview();
 });
 
+// ---- 内置规则集（手写资产，一键重排当前文档） ----
+
+async function loadBuiltinRulesets() {
+  const rulesets = await window.paiban.listBuiltinRulesets();
+  const sel = $('#builtin-ruleset-select');
+  sel.innerHTML = '';
+  if (!rulesets.length) {
+    sel.innerHTML = '<option value="">无内置规则集</option>';
+    $('#btn-apply-ruleset').disabled = true;
+    return;
+  }
+  for (const r of rulesets) {
+    const opt = document.createElement('option');
+    opt.value = r.id;
+    opt.textContent = r.id;
+    opt.title = r.description;
+    sel.appendChild(opt);
+  }
+}
+
+$('#btn-apply-ruleset').addEventListener('click', async () => {
+  const rulesetId = $('#builtin-ruleset-select').value;
+  if (!rulesetId) return;
+  if (!state.currentDocId) {
+    addMsg('assistant', '请先打开一篇文档，再按内置规则集重排。');
+    return;
+  }
+  const r = await window.paiban.applyBuiltinRuleset(state.currentDocId, rulesetId);
+  if (r.errors?.length) {
+    addMsg('assistant', `按 ${rulesetId} 重排完成，但有 ${r.errors.length} 条命令失败：${r.errors[0].error || ''}`);
+  } else {
+    addVersionChip(r.version, `按内置规则集 ${rulesetId} 重排`);
+  }
+  await loadVersions();
+  refreshPreview();
+});
+
 document.querySelectorAll('[data-close]').forEach((btn) => {
   btn.addEventListener('click', () => btn.closest('dialog').close());
 });
@@ -319,6 +356,6 @@ $('#btn-save-config').addEventListener('click', async () => {
 // ---- 启动 ----
 
 (async function boot() {
-  await Promise.all([loadDocuments(), loadTemplates(), refreshModelStatus()]);
+  await Promise.all([loadDocuments(), loadTemplates(), loadBuiltinRulesets(), refreshModelStatus()]);
   setInterval(refreshModelStatus, 15000);
 })();
