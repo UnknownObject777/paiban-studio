@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import PizZip from 'pizzip';
-import { mkdtempSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, rmSync, existsSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { LocalFsObjectStore } from '../src/storage/objectStore.js';
@@ -12,7 +12,9 @@ import { VersionStore } from '../src/storage/versionStore.js';
 import { TemplateStore } from '../src/templates/templateStore.js';
 import { extractPlaceholders, placeholderCommands } from '../src/templates/placeholders.js';
 import { rulesetToCommands, styleToKernelProps } from '../src/templates/rulesetToCommands.js';
+import { extractRulesetFromSample } from '../src/templates/rulesetFromSample.js';
 import { loadRuleset } from '../src/ruleset/load.js';
+import { validateRuleset } from '../src/ruleset/schema.js';
 import { applyEdits } from '../src/docx-core/applyEdits.js';
 import { openDocx } from '../src/docx-core/docx.js';
 import { findChild, findChildren, getAttr, isElement, childrenOf, tagOf } from '../src/docx-core/ooxml.js';
@@ -25,6 +27,13 @@ const DEFAULT_RULESET_DIR = [
   join(HERE, '../templates/rulesets/gongwen-default'),
   join(HERE, '../../templates/rulesets/gongwen-default'),
 ].find((p) => existsSync(p)) || join(HERE, '../templates/rulesets/gongwen-default');
+
+// lab-report fixture 目录（同 lab-report.test.ts 口径：按 docx 文件而非目录判断，
+// 因为 tsc 会把 generate.ts 编译进 dist/test/fixtures/lab-report/）。
+const LAB_REPORT_DIR = [
+  join(HERE, 'fixtures/lab-report'),
+  join(HERE, '../../test/fixtures/lab-report'),
+].find((p) => existsSync(join(p, 'template.docx')))!;
 
 function makeTemplateDocx() {
   const p = (text: string, pPr = '', rPr = '') =>
@@ -340,4 +349,64 @@ test('页码奇偶页不同对齐：evenAlign 生成偶数页页脚并声明 eve
   };
   assert.equal(footerJc(pnDetail.footer), 'right');
   assert.equal(footerJc(pnDetail.evenFooter), 'left');
+});
+
+test('规则集反推：styles.xml 命名样式参与样式值提取（lab-report 模板 fixture，issue #28）', () => {
+  const buf = readFileSync(join(LAB_REPORT_DIR, 'template.docx'));
+  const { recognizers, styles, extracted } = extractRulesetFromSample(buf, { name: 'lab-report' });
+  // 反推结果仍通过两文件 schema 校验
+  assert.deepEqual(validateRuleset(recognizers, styles), []);
+  // caption：命名样式 Caption（黑体 14pt 居中），不再回落 gongwen 默认 16pt
+  assert.ok(extracted.includes('caption'));
+  assert.equal(styles.components.caption.fontEastAsia, '黑体');
+  assert.equal(styles.components.caption.sizePt, 14);
+  assert.equal(styles.components.caption.align, 'center');
+  // body：命名样式 Body（仿宋_GB2312 16pt 两端对齐 28 磅行距 首行缩进 2 字符）
+  assert.equal(styles.components.body.fontEastAsia, '仿宋_GB2312');
+  assert.equal(styles.components.body.sizePt, 16);
+  assert.equal(styles.components.body.align, 'justify');
+  assert.equal(styles.components.body.lineSpacingPt, 28);
+  assert.equal(styles.components.body.firstLineIndentChars, 2);
+  // heading1：命名样式 Heading1（黑体 16pt）
+  assert.ok(extracted.includes('heading1'));
+  assert.equal(styles.components.heading1.fontEastAsia, '黑体');
+  assert.equal(styles.components.heading1.sizePt, 16);
+  // title：命名样式 ReportTitle（方正小标宋简体 22pt 居中）
+  assert.equal(styles.components.title.fontEastAsia, '方正小标宋简体');
+  assert.equal(styles.components.title.sizePt, 22);
+  assert.equal(styles.components.title.align, 'center');
+  // table：数据行单元格命名样式 TableCell（仿宋_GB2312 12pt 居中），表头行不参与取样
+  assert.ok(extracted.includes('table'));
+  assert.equal(styles.components.table.fontEastAsia, '仿宋_GB2312');
+  assert.equal(styles.components.table.sizePt, 12);
+  assert.equal(styles.components.table.align, 'center');
+});
+
+test('规则集反推：段落直接格式优先于 pStyle 命名样式（Word 层叠，issue #28）', () => {
+  const zip = new PizZip();
+  zip.file('[Content_Types].xml', DECL +
+    '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+    '<Default Extension="xml" ContentType="application/xml"/></Types>');
+  zip.file('word/document.xml', DECL +
+    `<w:document ${W_NS}><w:body>` +
+    // 首段挂 pStyle=MyTitle，run 直接指定 黑体 20pt（半磅 40）→ 直接格式应赢
+    '<w:p><w:pPr><w:pStyle w:val="MyTitle"/></w:pPr>' +
+    '<w:r><w:rPr><w:rFonts w:eastAsia="黑体"/><w:sz w:val="40"/></w:rPr><w:t xml:space="preserve">报告标题</w:t></w:r></w:p>' +
+    '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr>' +
+    '</w:body></w:document>');
+  zip.file('word/styles.xml', DECL +
+    '<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
+    '<w:style w:type="paragraph" w:styleId="Base"><w:name w:val="base"/>' +
+    '<w:pPr><w:jc w:val="left"/></w:pPr>' +
+    '<w:rPr><w:rFonts w:eastAsia="宋体"/><w:sz w:val="20"/></w:rPr></w:style>' +
+    // MyTitle basedOn Base：字号 12pt（半磅 24），对齐/字体经 basedOn 链继承
+    '<w:style w:type="paragraph" w:styleId="MyTitle"><w:name w:val="mytitle"/><w:basedOn w:val="Base"/>' +
+    '<w:rPr><w:sz w:val="24"/></w:rPr></w:style>' +
+    '</w:styles>');
+  const { styles } = extractRulesetFromSample(zip.generate({ type: 'nodebuffer' }));
+  // 直接格式（黑体 20pt）覆盖命名样式及其 basedOn 链（宋体 12pt）
+  assert.equal(styles.components.title.fontEastAsia, '黑体');
+  assert.equal(styles.components.title.sizePt, 20);
+  // 段落无直接对齐 → 命名样式经 basedOn 链继承的左对齐生效
+  assert.equal(styles.components.title.align, 'left');
 });

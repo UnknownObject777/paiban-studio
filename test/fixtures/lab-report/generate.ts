@@ -2,7 +2,7 @@
 //
 // 产物（写入本目录，与脚本同源提交，保证可复现）：
 //   template.docx    —— 规范排版的实验报告模板：命名段落样式（报告标题 / 一级·二级·三级标题 /
-//                        正文 / 题注）、统一字体字号行距、首行缩进 2 字符、题注居中、
+//                        正文 / 题注 / 表格单元格）、统一字体字号行距、首行缩进 2 字符、题注居中、
 //                        A4 规范页边距（参照 templates/rulesets/gongwen-default 风格）、页脚页码域、
 //                        带边框数据表格、单摆示意图。
 //   messy-draft.docx —— 与 template 完全相同的文字内容与结构（逐段文本一致），但格式混乱：
@@ -225,7 +225,6 @@ const TPL_RPR = {
   body: '<w:rFonts w:ascii="Times New Roman" w:eastAsia="仿宋_GB2312" w:hAnsi="Times New Roman"/><w:sz w:val="32"/><w:szCs w:val="32"/>',
   caption: '<w:rFonts w:ascii="Times New Roman" w:eastAsia="黑体" w:hAnsi="Times New Roman"/><w:sz w:val="28"/><w:szCs w:val="28"/>',
   tableHead: '<w:rFonts w:ascii="Times New Roman" w:eastAsia="黑体" w:hAnsi="Times New Roman"/><w:b/><w:sz w:val="24"/><w:szCs w:val="24"/>',
-  tableCell: '<w:rFonts w:ascii="Times New Roman" w:eastAsia="仿宋_GB2312" w:hAnsi="Times New Roman"/><w:sz w:val="24"/><w:szCs w:val="24"/>',
 };
 
 const TPL_COLS = [1248, 2496, 2496, 2608]; // 合计 8848 twips ≈ 15.6cm
@@ -260,10 +259,10 @@ function tplTable(b: Block): string {
     const cells = row
       .map((c, i) => {
         const w = TPL_COLS[i];
+        // 数据行单元格只挂 TableCell 命名样式（仿宋_GB2312 12pt 居中），无直接格式 —— issue #28 反推用例
         return (
           '<w:tc><w:tcPr><w:tcW w:w="' + w + '" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr>' +
-          '<w:p><w:pPr><w:jc w:val="center"/><w:rPr>' + TPL_RPR.tableCell + '</w:rPr></w:pPr>' +
-          run(c, TPL_RPR.tableCell) + '</w:p></w:tc>'
+          '<w:p><w:pPr><w:pStyle w:val="TableCell"/></w:pPr>' + run(c, '') + '</w:p></w:tc>'
         );
       })
       .join('');
@@ -364,6 +363,11 @@ function renderTemplateStyles(): string {
     '<w:pPr><w:keepNext/><w:spacing w:line="560" w:lineRule="exact"/><w:jc w:val="center"/></w:pPr>' +
     '<w:rPr><w:rFonts w:ascii="Times New Roman" w:eastAsia="黑体" w:hAnsi="Times New Roman"/>' +
     '<w:sz w:val="28"/><w:szCs w:val="28"/></w:rPr></w:style>' +
+    // 表格单元格：仿宋_GB2312 12pt 居中（数据行单元格只挂 pStyle，无直接格式）
+    '<w:style w:type="paragraph" w:styleId="TableCell"><w:name w:val="表格单元格"/><w:basedOn w:val="Normal"/><w:qFormat/>' +
+    '<w:pPr><w:spacing w:line="560" w:lineRule="exact"/><w:jc w:val="center"/></w:pPr>' +
+    '<w:rPr><w:rFonts w:ascii="Times New Roman" w:eastAsia="仿宋_GB2312" w:hAnsi="Times New Roman"/>' +
+    '<w:sz w:val="24"/><w:szCs w:val="24"/></w:rPr></w:style>' +
     '</w:styles>'
   );
 }

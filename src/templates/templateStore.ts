@@ -56,7 +56,8 @@ export class TemplateStore {
   }
 
   /**
-   * 上传模板：解析占位符 + 结构大纲 + 反推规则集（title/body/page 实测，其余继承默认集）。
+   * 上传模板：解析占位符 + 结构大纲 + 反推规则集（title/body/heading/caption/table/page 实测
+   * —— 含 styles.xml 命名样式层叠（issue #28），其余组件继承默认集）。
    * @returns 模板 ID + meta + 占位符清单 + 实测组件清单
    */
   uploadTemplate(

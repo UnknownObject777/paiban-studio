@@ -31,11 +31,12 @@ const PARAGRAPH_STYLE_KEYS = new Set([
   'notes',
 ]);
 
-// 表格组件额外允许的样式属性
+// 表格组件额外允许的样式属性（align 为单元格段落对齐，issue #28 反推表格维度需要）
 const TABLE_STYLE_KEYS = new Set([
   'fontEastAsia',
   'fontAscii',
   'sizePt',
+  'align',
   'headerFontEastAsia',
   'headerBold',
   'lineSpacingPt',
