@@ -200,11 +200,28 @@ test('进度：空闲且无任何步骤时不可见', () => {
 
 // ---- 健壮性 ----
 
-test('tool_end 无匹配运行中步骤时兜底落成卡；事件序列不崩溃', () => {
+test('轮次外的迟到 tool_end 直接忽略；轮次内无匹配则兜底落成卡', () => {
   let s = createFlow();
   s = reduce(s, { type: 'tool_end', name: 'doc_edit', isError: false, summary: 'v2' });
-  assert.deepEqual(kinds(s.items), ['tool']);
-  assert.equal((s.items[0] as any).status, 'done');
+  assert.equal(s.items.length, 0); // 未在忙：忽略
+
+  s = reduce(createFlow(), { type: 'doc_opened', docId: 'd1', name: 'a.docx' });
+  s = reduce(s, { type: 'send', text: 'x' });
+  s = reduce(s, { type: 'tool_end', name: 'doc_edit', isError: false, summary: 'v2' });
+  assert.deepEqual(kinds(s.items), ['version', 'user', 'tool']);
+  assert.equal((s.items[2] as any).status, 'done');
+});
+
+test('abort 后迟到的 tool_end 回填被停止的原卡，不落重复卡', () => {
+  let s = reduce(createFlow(), { type: 'doc_opened', docId: 'd1', name: 'a.docx' });
+  s = reduce(s, { type: 'send', text: 'x' });
+  s = reduce(s, { type: 'tool_start', name: 'doc_edit', args: '' });
+  s = reduce(s, { type: 'abort' });
+  s = reduce(s, { type: 'tool_end', name: 'doc_edit', isError: false, summary: 'v2（新版本）' });
+  const tools = s.items.filter((i) => i.kind === 'tool') as any[];
+  assert.equal(tools.length, 1); // 没有重复卡
+  assert.equal(tools[0].status, 'done');
+  assert.equal(tools[0].summary, 'v2（新版本）');
 });
 
 test('reduce 不可变：返回新 state，旧 state 不被改写', () => {
@@ -214,4 +231,46 @@ test('reduce 不可变：返回新 state，旧 state 不被改写', () => {
   assert.equal(s0.items.length, n0);
   assert.ok(s1.items.length > n0);
   assert.notEqual(s0, s1);
+});
+
+// ---- 轮次与结果态（code-review 修复） ----
+
+test('新一轮 send 后进度链只统计本轮步骤', () => {
+  let s = reduce(createFlow(), { type: 'doc_opened', docId: 'd1', name: 'a.docx' });
+  s = reduce(s, { type: 'send', text: '第一轮' });
+  s = reduce(s, { type: 'tool_start', name: 'doc_outline', args: '' });
+  s = reduce(s, { type: 'tool_end', name: 'doc_outline', isError: false, summary: '42 段' });
+  s = reduce(s, { type: 'done' });
+  assert.equal(deriveProgress(s).steps.length, 1);
+  s = reduce(s, { type: 'send', text: '第二轮' });
+  const p = deriveProgress(s);
+  assert.equal(p.active, true);
+  assert.equal(p.steps.length, 0); // 旧轮步骤不再残留
+  assert.equal(p.currentLabel, '思考中…');
+});
+
+test('结果态文案：done / aborted / error（含无步骤出错仍可见）', () => {
+  let s = reduce(createFlow(), { type: 'doc_opened', docId: 'd1', name: 'a.docx' });
+  s = reduce(s, { type: 'send', text: 'x' });
+  s = reduce(s, { type: 'done' });
+  assert.equal(deriveProgress(s).finalLabel, '完成 · 共 0 步');
+
+  s = reduce(s, { type: 'send', text: 'y' });
+  s = reduce(s, { type: 'abort' });
+  const pa = deriveProgress(s);
+  assert.equal(pa.finalLabel, '已停止 · 共 0 步');
+  assert.equal(pa.active, false);
+
+  // 无工具步骤直接出错：进度条仍显示失败态
+  s = reduce(s, { type: 'send', text: 'z' });
+  s = reduce(s, { type: 'error', message: '模型超时' });
+  const pe = deriveProgress(s);
+  assert.equal(pe.visible, true);
+  assert.equal(pe.finalLabel, '出错（详见对话流）');
+});
+
+test('note 卡：非版本事件的居中便签（模板解析 / 配置保存等）', () => {
+  const s = reduce(createFlow(), { type: 'note', title: '配置', note: '模型配置已保存，重启后生效' });
+  assert.deepEqual(kinds(s.items), ['note']);
+  assert.equal((s.items[0] as any).title, '配置');
 });

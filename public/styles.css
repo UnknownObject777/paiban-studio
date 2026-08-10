@@ -214,6 +214,32 @@ body {
 
 .big-action { font-size: 15px; padding: 12px 32px; }
 
+/* landing 唯一主行动线是「打开 docx」；发送按钮在 landing 降为描边（无文档时亦禁用） */
+#landing #btn-send {
+  background: transparent;
+  color: var(--ink);
+  border-color: var(--ink-40);
+  box-shadow: none;
+}
+#landing #btn-send:hover:not(:disabled) { background: var(--ink-06); border-color: var(--ink-60); }
+
+/* 便签卡：非版本事件（模板解析 / 配置保存）的居中提示 */
+.note-chip {
+  align-self: center;
+  font-size: 12px;
+  border: 1px dashed var(--ink-40);
+  color: var(--ink-60);
+  border-radius: var(--radius-pill);
+  padding: 4px 14px;
+}
+
+/* 相位切换过渡（landing ↔ 编辑态平滑淡入） */
+#landing, #workbench { animation: phase-in 0.22s ease; }
+@keyframes phase-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
 .landing-recents { display: flex; flex-direction: column; gap: var(--s1); align-items: center; }
 .recents-label { font-size: 12px; }
 .recents-row { display: flex; flex-wrap: wrap; gap: var(--s1); justify-content: center; }
@@ -265,7 +291,7 @@ body {
   border-bottom: 1px solid var(--ink-06);
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--s1);
   background: var(--ink-06);
 }
 .progress-current {
@@ -273,7 +299,7 @@ body {
   align-items: center;
   gap: var(--s1);
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 540;
 }
 #progress-bar:not(.active) .progress-current { color: var(--ink-60); font-weight: 400; }
 #progress-bar:not(.active) .progress-spinner { display: none; }
@@ -296,7 +322,7 @@ body {
 .progress-step {
   font-size: 11px;
   font-family: var(--font-mono);
-  letter-spacing: 0.4px;
+  letter-spacing: 0.54px;
   border-radius: var(--radius-pill);
   padding: 2px 10px;
   border: 1px dashed var(--ink-25);
@@ -353,7 +379,7 @@ body {
   max-width: 100%;
   font-size: 12px;
   font-family: var(--font-mono);
-  letter-spacing: 0.4px;
+  letter-spacing: 0.54px;
   border: 1px dashed var(--ink-40);
   border-radius: var(--radius-card); /* 长 summary 折行时卡片形容错，不用 pill */
   padding: 4px 12px;
@@ -474,7 +500,7 @@ dialog.drawer {
   flex-direction: column;
   gap: var(--s2);
   overflow-y: auto;
-  box-shadow: -12px 0 48px rgba(42, 42, 46, 0.18);
+  box-shadow: -8px 0 24px rgba(42, 42, 46, 0.12);
 }
 dialog.drawer:not([open]) { display: none; }
 dialog.drawer::backdrop { background: rgba(42, 42, 46, 0.25); }
@@ -547,7 +573,7 @@ dialog.drawer::backdrop { background: rgba(42, 42, 46, 0.25); }
   border-color: var(--ink);
   color: var(--paper-card);
 }
-.item .name { font-size: 13px; font-weight: 600; word-break: break-all; }
+.item .name { font-size: 13px; font-weight: 540; word-break: break-all; }
 .item .meta { font-size: 11px; opacity: 0.6; }
 .item .row { display: flex; gap: 4px; flex-wrap: wrap; }
 
@@ -578,7 +604,7 @@ dialog.modal h3 {
 }
 .modal-actions { display: flex; justify-content: flex-end; gap: var(--s1); margin-top: var(--s2); }
 .form-grid { display: flex; flex-direction: column; gap: var(--s2); }
-.form-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; font-weight: 600; }
+.form-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; font-weight: 540; }
 .form-grid input, .form-grid select {
   font-family: var(--font-song);
   border: 1px solid var(--ink-25);
@@ -589,7 +615,7 @@ dialog.modal h3 {
 }
 
 .tpl-section { margin-bottom: var(--s2); }
-.tpl-section h4 { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+.tpl-section h4 { font-size: 13px; font-weight: 540; margin-bottom: 4px; }
 .tpl-section pre {
   font-size: 11px;
   background: var(--ink-06);

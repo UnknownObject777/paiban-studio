@@ -69,6 +69,8 @@ function createItemNode(item) {
     div.className = `msg ${item.kind}`;
   } else if (item.kind === 'tool') {
     div.className = 'tool-chip';
+  } else if (item.kind === 'note') {
+    div.className = 'note-chip';
   } else if (item.kind === 'version') {
     div.className = 'version-chip';
   }
@@ -88,6 +90,8 @@ function updateItemNode(node, item) {
     node.innerHTML = `<span class="dot"></span><span>${escapeHtml(item.label)}</span><span class="dim">${escapeHtml(tail)}</span>`;
   } else if (item.kind === 'version') {
     node.textContent = `已存版本 ${item.versionId}${item.note ? ' · ' + item.note : ''}`;
+  } else if (item.kind === 'note') {
+    node.textContent = `${item.title} · ${item.note}`;
   }
 }
 
@@ -103,11 +107,7 @@ function renderProgress() {
   bar.classList.toggle('hidden', !p.visible);
   if (!p.visible) return;
   bar.classList.toggle('active', p.active);
-  $('#progress-label').textContent = p.active
-    ? p.currentLabel
-    : p.failedCount > 0
-      ? `已停止 · ${p.failedCount} 步失败`
-      : `完成 · 共 ${p.steps.length} 步`;
+  $('#progress-label').textContent = p.active ? p.currentLabel : p.finalLabel;
   const ol = $('#progress-steps');
   ol.innerHTML = '';
   for (const s of p.steps) {
@@ -122,6 +122,8 @@ function renderBusy() {
   $('#btn-send').classList.toggle('hidden', flow.busy);
   $('#btn-abort').classList.toggle('hidden', !flow.busy);
   $('#chat-input').disabled = flow.busy;
+  // 规格：无文档时发送禁用（输入框保留，供查看示例；拒绝分支仍由状态机兜底）
+  $('#btn-send').disabled = !flow.docId;
 }
 
 // ---- 预览（防抖刷新，D4：编辑 → ArrayBuffer → iframe） ----
@@ -192,7 +194,7 @@ document.querySelectorAll('.suggest-chip').forEach((chip) => {
 
 $('#btn-back').addEventListener('click', () => {
   dispatch({ type: 'back_to_landing' });
-  renderRecents();
+  loadDocuments(); // 刷新 landing 的最近文档
 });
 
 // 窄屏 对话/预览 tab 切换
@@ -328,7 +330,7 @@ async function loadTemplates() {
 $('#btn-upload-template').addEventListener('click', async () => {
   const r = await window.paiban.uploadTemplate();
   if (!r) return;
-  dispatch({ type: 'version_note', versionId: '模板', note: `已解析：${r.extracted.join('/')}` });
+  dispatch({ type: 'note', title: '模板', note: `已解析：${r.extracted.join('/')}` });
   await loadTemplates();
 });
 
@@ -376,7 +378,6 @@ $('#btn-instantiate').addEventListener('click', async () => {
   $('#template-dialog').close();
   $('#drawer-templates').close();
   await openDocFlow({ docId: r.docId, name: r.name ?? r.docId, versionId: r.version?.id });
-  dispatch({ type: 'version_note', versionId: r.version?.id ?? '—', note: '从模板实例化' });
 });
 
 // ---- 内置规则集（模板抽屉内，一键重排当前文档） ----
@@ -465,7 +466,7 @@ $('#btn-save-config').addEventListener('click', async () => {
   if (key) patch.apiKey = key;
   await window.paiban.setConfig(patch);
   $('#settings-dialog').close();
-  dispatch({ type: 'version_note', versionId: '配置', note: '模型配置已保存，重启应用后生效' });
+  dispatch({ type: 'note', title: '配置', note: '模型配置已保存，重启应用后生效' });
 });
 
 // ---- 启动 ----
