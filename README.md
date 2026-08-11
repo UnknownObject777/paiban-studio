@@ -2,6 +2,25 @@
 
 **AI 驱动的 Office 排版本地工作台（Word MVP）**——上传排版混乱的 docx + 选/传模板 → 用自然语言指挥 AI 直接修改文档 → 秒级实时预览 → 每次改动自动存版本、可回滚。全程本地运行，公文不出内网。
 
+## 为什么做这个：AI 排版不该是「现场写 Python 脚本」
+
+WorkBuddy 类工具的做法是让 LLM 现场生成 Python 脚本（python-docx 之流）去改 Word。这条路有三个绕不开的痛点：
+
+- **丑**：字体字号行距全靠模型现场编，没有规则约束，排出来的东西不符合公文/实验报告规范，每次结果还不一样；
+- **费 token**：整篇文档塞进上下文、脚本反复试错重跑，一次排版烧掉的 token 比文档本身贵；
+- **脆**：脚本出错就是一串 traceback，改坏了没有回头路。
+
+paiban-studio 换了一条路——**LLM 不碰文件，只产出声明式排版命令**：
+
+| 痛点 | 本项目的解法 |
+|---|---|
+| 样式靠编、结果丑 | 排版规则沉淀为**规则集资产**（内置公文/实验报告规则集 + 上传模板反推），黑体三号居中、仿宋四号、行距 28 磅都有据可依 |
+| 全文进上下文费 token | 发送前只注入**文档结构摘要**（段落路径 + 前 40 段预览），模型按路径精准寻址，不读全文 |
+| 脚本试错不可控 | 命令经唯一 seam `applyEdits(buffer, commands)` 落 OOXML，**round-trip 保真**（19 份真实 Word/WPS 样本逐部件无损验证）+ 生成后自检 |
+| 改坏没回头路 | 每次成功编辑**自动存版本**，随时预览/回滚/下载任意历史版本 |
+
+交互上是两相设计：首屏只有一个居中的对话窗（类 ChatGPT），打开文档后对话列左移、右侧大图实时预览排版效果，AI 的每一步操作（分析结构 → 读取规则 → 应用排版）都以步骤卡和进度条实时可见。
+
 ## 快速开始（开发者）
 
 > 前置：Node ≥ 22.19（见 [部署文档 · 环境要求](#环境要求)）。
@@ -9,8 +28,8 @@
 ```bash
 npm install        # 安装依赖（Electron / pi SDK / docx 内核）
 npm run build      # tsc 编译 TypeScript → dist/（start/test/preview 会自动先 build）
-npm test           # 单元 + 回归测试（node:test，54 用例：53 通过 + 1 真实 LLM 默认跳过）
-npm start          # 启动 Electron 开发模式（三栏工作台）
+npm test           # 单元 + 回归测试（node:test，88 用例：87 通过 + 1 真实 LLM 默认跳过）
+npm start          # 启动 Electron 开发模式（landing → 编辑态两相工作台）
 npm run preview    # 规则集组件画廊预览页 → http://localhost:4173/preview/ruleset-gallery.html
 ```
 
@@ -18,17 +37,23 @@ npm run preview    # 规则集组件画廊预览页 → http://localhost:4173/pr
 
 ## 状态 · MVP 进度边界
 
-MVP 规格已确认（2026-08-02，`docs/mvp-spec.md`），进度边界如下（截至 2026-08-02）：
+MVP 规格已确认（2026-08-02，`docs/mvp-spec.md`），进度边界如下（截至 2026-08-11）：
 
 | 里程碑 | 状态 | 说明 |
 |---|---|---|
 | 模板规则集原型（issue #1） | ✅ 已完成（`main`） | 识别/样式两文件 schema + 组件画廊预览页 |
 | round-trip 保真 spike（MVP 第一里程碑） | ✅ 已达成 | `test/fixtures/` 19 份真实 Word/WPS 产出样本，未编辑 round-trip 逐部件无损 + build 幂等 |
-| 核心五模块（issue #2） | ✅ 已实现并合入 `main` | 编辑内核 / 存储版本链 / 模板层 / agent 接入 / 三栏 UI，54 用例（53 通过、1 真实 LLM e2e 默认跳过） |
+| 核心五模块（issue #2） | ✅ 已实现并合入 `main` | 编辑内核 / 存储版本链 / 模板层 / agent 接入 / 工作台 UI |
 | TypeScript 迁移（issue #12） | ✅ 已合入 | 全量 TS（src/test/preview）+ tsc 构建链路，类型检查 0 错误 |
+| 交互重写：两相工作台（issue #31） | ✅ 已合入 | ChatGPT 式 landing → 编辑态（对话左移 + 大预览 + 流式瀑布 + 可感知进度），状态机 22 例 |
+| 预览内核替换为 OnlyOffice 静态 SDK | 🚧 进行中 | 已 checkpoint（回环静态服务器 + 只读渲染）；x2t wasm 内存 OOM 排查中 |
 | 真实 LLM 链路测试 | ⏳ 待做 | `PAIBAN_E2E=1` + 模型凭证启用（默认跳过）；mock LLM 全链路已在默认套件覆盖 |
 | Word/WPS 双端人工验证 | ⏳ 待做 | 发布前人工打开确认版式一致（spec 首要风险收口） |
 | electron-builder 打包分发 | ⏳ 待做 | 三平台（Win NSIS / macOS DMG / Kylin AppImage） |
+
+### 下一期（Roadmap）
+
+**Markdown + 模板 → 规范 docx**：输入一篇 markdown 文稿和一个排版模板（或内置规则集），直接产出符合规范的 Word 文档——把「写内容」和「排版」彻底分开，内容在编辑器里写 markdown，排版交给规则集。当前期已具备全部地基：规则集反推（模板 → 样式命令）、`normalize` 全文重排、round-trip 保真内核；缺的是 markdown → 文档结构（标题/正文/列表/表格）的映射层。
 
 MVP 边界（In / Out of Scope 精简版，完整版见 `docs/mvp-spec.md`）：
 
@@ -57,12 +82,12 @@ git clone <repo> paiban-studio && cd paiban-studio
 npm install
 ```
 
-安装产物：Electron 二进制、`@earendil-works/pi-coding-agent` SDK、`pizzip` / `fast-xml-parser`（编辑内核）、`docx-preview`（预览渲染）。均从 npm 拉取；内网环境需预先配置 npm 镜像或离线仓库。
+安装产物：Electron 二进制、`@earendil-works/pi-coding-agent` SDK、`pizzip` / `fast-xml-parser`（编辑内核）。均从 npm 拉取；内网环境需预先配置 npm 镜像或离线仓库。预览用 OnlyOffice 静态 SDK 资产（约 600MB，gitignore 排除）由 `npm run fetch:onlyoffice` 单独拉取。
 
 ### 开发模式运行
 
 ```bash
-npm start          # 启动 Electron（三栏工作台）
+npm start          # 启动 Electron（landing → 编辑态两相工作台）
 npm run preview    # 规则集组件画廊静态预览页（http://localhost:4173）
 npm test           # 全量测试
 ```
@@ -152,7 +177,7 @@ flowchart LR
     F[IPC handlers<br/>main.ts] --> A
   end
   subgraph Renderer["渲染进程"]
-    G[public/index.html<br/>三栏 UI] --> H[preview.html<br/>docx-preview iframe]
+    G[public/index.html<br/>两相 UI: landing → 编辑态] --> H[preview.html<br/>OnlyOffice 只读渲染 iframe]
   end
   F <-->|contextBridge<br/>paiban.*| G
   E -. 事件流 text_delta / tool_start / tool_end .-> G
@@ -177,11 +202,12 @@ src/                      # TypeScript 源码（tsc 编译到 dist/）
 │   └── xml.ts            #   preserveOrder 解析 / 保序序列化（round-trip 关键）
 ├── storage/              # objectStore(sha256) + versionStore(版本链)
 ├── templates/            # 上传→解析→规则集反推→实例化
-├── agent-core/           # bridge(pi SDK) + tools(4 自研工具)
-└── ruleset/              # 规则集 schema（Node/浏览器共用校验）
+├── agent-core/           # bridge(pi SDK) + tools(5 自研工具)
+├── ruleset/              # 规则集 schema（Node/浏览器共用校验）
+└── ui/conversation-flow.ts # 对话流状态机（两相视图 / 瀑布流条目 / 进度推导，纯函数可测）
 dist/                     # tsc 构建产物（主进程/preview 从 dist 加载；.gitignore 排除）
-public/                   # 无框架三栏前端（HTML/CSS/JS，纯浏览器脚本不迁移 TS）
-templates/rulesets/       # 内置公文默认规则集（gongwen-default）
+public/                   # 无框架两相前端（HTML/CSS/JS ES module，状态机经 dist 编译产物 import）
+templates/rulesets/       # 内置规则集（gongwen-default / lab-report-default）
 test/                     # node:test 用例（TS 源码）+ fixtures/ 19 份真实样本
 ```
 
@@ -220,6 +246,7 @@ const { buffer, result } = applyEdits(docxBuffer, commands);
 | `test/storage.test.ts` | 快照幂等 / 回滚语义 / 内容寻址去重 |
 | `test/templates.test.ts` | 占位符提取 / 规则集反推 / 实例化 / 规则集→命令 |
 | `test/workspace.test.ts` | service 级端到端 + 配置优先级 + agent 工具链（无 LLM） |
+| `test/conversation-flow.test.ts` | 对话流状态机：两相转换 / 瀑布流条目序列 / 轮次制进度模型 / abort 与错误路径 |
 | `test/e2e-agent.test.ts` | 真实 LLM 链路（`PAIBAN_E2E=1` 启用，默认跳过） |
 
 回归集要求：内置真实 Word/WPS 产出的 `.docx` 样本，round-trip 后重解析校验 + docx-preview 渲染冒烟；发布前双端人工打开验证。
@@ -236,7 +263,7 @@ const { buffer, result } = applyEdits(docxBuffer, commands);
 
 - 新增命令/原语时，先看 `applyEdits` 分派表与 `primitives.ts`，尽量复用现有原语组合，避免绕过 seam 直接改 XML。
 - 涉及 `numbering.xml` 的改动是 spec 标记的首要风险之一，必须补 round-trip 回归。
-- 前端遵循 Figma design system（`docs/design/figma/DESIGN.md`）：界面 chrome 严格黑白、pill/圆形几何、8px 间距体系、`dashed 2px` focus outline。动手前先读全文。
+- 前端当前生效风格为**水墨风**（宣纸底色 + 墨色层次 + 朱砂印章，见 `docs/design/homepage-beautify-prompt.md` 迭代记录）；Figma design system（`docs/design/figma/DESIGN.md`）的间距/字重/几何体系继续遵守，动手前先读这两份。
 
 ## 文档
 
@@ -252,10 +279,10 @@ const { buffer, result } = applyEdits(docxBuffer, commands);
 
 ## 技术决策速览
 
-- **形态**：Electron ≥ 43 桌面应用（Node ≥ 22.19），主进程/服务层/测试全 TypeScript（tsc → dist/），无框架纯 HTML/CSS/JS 三栏前端，IPC 通信
+- **形态**：Electron ≥ 43 桌面应用（Node ≥ 22.19），主进程/服务层/测试全 TypeScript（tsc → dist/），无框架纯 HTML/CSS/JS 两相前端（状态机驱动），IPC 通信
 - **编辑层**：pizzip + fast-xml-parser@5（preserveOrder）+ 自研薄文档模型层，唯一 seam `applyEdits(buffer, commands)`
-- **agent**：@earendil-works/pi-coding-agent SDK 主进程内嵌，自研四工具（doc_outline / doc_edit / template_read / version_store）
-- **预览**：docx-preview@0.4 渲染进程 iframe，端到端 0.3–0.7s
+- **agent**：@earendil-works/pi-coding-agent SDK 主进程内嵌，自研五工具（doc_outline / doc_edit / template_read / ruleset_read / version_store）
+- **预览**：OnlyOffice 静态 SDK 只读渲染 iframe（回环 HTTP 伺服；x2t wasm OOM 排查中，原 docx-preview 方案已移除）
 - **模板**：排版设计系统哲学——规则集（识别/样式两文件）+ 组件化 + 组件画廊预览
 - **版本**：S3 兼容抽象 + 本地文件实现，sha256 内容寻址 + 版本链
 - **分发**：electron-builder，跨 Win/macOS/Kylin 三平台（信创合规）
