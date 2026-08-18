@@ -1,5 +1,8 @@
 // scripts/seed-demo-docs.mjs — 演示/验收用：向工作台数据目录预置三份生成示例文档
-// （投标文件 / 实验报告 / 境外汇款申请书），走 docgen 生成链路（与 doc_generate 工具同路径）。
+// （投标文件 / 实验报告 / 境外汇款申请书），走 docgen 生成链路（与 doc_generate 工具同路径）；
+// 并把三份产物 buffer 各 uploadTemplate 一份为演示模板（"模板"栏也有演示资产）。
+//
+// 幂等说明：重复执行会重复创建演示文档；模板按名称查重、已存在则跳过。
 //
 // 用法：
 //   node scripts/seed-demo-docs.mjs [workspaceDir]
@@ -172,14 +175,29 @@ const FX_MD = `# 境外汇款申请书
 `;
 
 const jobs = [
-  { markdown: BID_MD, rulesetId: 'bid-default', name: '投标文件（演示）.docx' },
-  { markdown: LAB_MD, rulesetId: 'lab-report-default', name: '实验报告（演示）.docx' },
-  { markdown: FX_MD, rulesetId: 'fx-form-default', name: '境外汇款申请书（演示）.docx' },
+  { markdown: BID_MD, rulesetId: 'bid-default', name: '投标文件（演示）.docx', templateName: '投标文件模板（演示）' },
+  { markdown: LAB_MD, rulesetId: 'lab-report-default', name: '实验报告（演示）.docx', templateName: '实验报告模板（演示）' },
+  { markdown: FX_MD, rulesetId: 'fx-form-default', name: '境外汇款申请书（演示）.docx', templateName: '境外汇款申请书模板（演示）' },
 ];
 
 const ws = new Workspace(workspaceDir);
+const generated = [];
 for (const job of jobs) {
   const { docId, version, name } = ws.generateDocument(job.markdown, job.rulesetId, job.name);
+  generated.push({ docId, name });
   console.log(`✔ ${name}  docId=${docId}  ${version.id}（规则集 ${job.rulesetId}）`);
+}
+
+// 三份产物 buffer 各上传为演示模板（复用上面生成结果，不重复生成文档）。
+// 幂等：按模板名查重，已存在则跳过。
+const existingTpl = new Set(ws.listTemplates().map((t) => t.name));
+for (let i = 0; i < jobs.length; i++) {
+  const tplName = jobs[i].templateName;
+  if (existingTpl.has(tplName)) {
+    console.log(`↷ 模板《${tplName}》已存在，跳过`);
+    continue;
+  }
+  const { templateId } = ws.uploadTemplate(ws.getDocumentBuffer(generated[i].docId), tplName);
+  console.log(`✔ 模板《${tplName}》  templateId=${templateId}（复用 ${generated[i].name} 产物）`);
 }
 console.log(`数据目录：${workspaceDir}`);
