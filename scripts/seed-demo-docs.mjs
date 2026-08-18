@@ -1,7 +1,8 @@
 // scripts/seed-demo-docs.mjs — 演示/验收用：向工作台数据目录预置三份生成示例文档
 // （投标文件 / 实验报告 / 境外汇款申请书），走 docgen 生成链路（与 doc_generate 工具同路径）；
 // 并把三份产物 buffer 各 uploadTemplate 一份为演示模板（"模板"栏也有演示资产）；
-// 另追加一份带 {{占位符}} 的投标文件模板（供 template_read 提取 / template_instantiate 填值演示）。
+// 另追加两份带 {{占位符}} 的模板（投标文件、境外汇款申请书，供 template_read 提取 /
+// template_instantiate 填值演示；境外汇款申请书的占位符位于字段表格单元格内）。
 //
 // 幂等说明：重复执行会重复创建演示文档；模板按名称查重、已存在则跳过。
 //
@@ -236,6 +237,49 @@ const BID_PLACEHOLDER_MD = `# 投标文件
 附件：营业执照副本复印件、资质证书复印件、财务报表。
 `;
 
+// 占位符演示模板（境外汇款申请书）：结构沿用 FX_MD（汇款人/收款人/汇款信息字段表格 +
+// 申报声明），但字段表格"内容"列的值换成 {{占位符}}（占位符位于表格单元格内），
+// 日期行用 {{日期}}。供 template_read 提取 + template_instantiate 填值演示。
+const FX_PLACEHOLDER_MD = `# 境外汇款申请书
+
+银行业务编号：{{银行业务编号}}　　　　日期：{{日期}}
+
+## 汇款人信息
+
+| 项目 | 内容 |
+| --- | --- |
+| 汇款人名称 | {{汇款人名称}} |
+| 主体标识码（统一社会信用代码） | {{主体标识码}} |
+| 汇款人账号 | {{汇款人账号}} |
+| 联系电话 | {{联系电话}} |
+
+## 收款人信息
+
+| 项目 | 内容 |
+| --- | --- |
+| 收款人名称 | {{收款人名称}} |
+| 收款人地址 | {{收款人地址}} |
+| 收款人账号 | {{收款人账号}} |
+| 收款银行（SWIFT） | {{收款银行SWIFT}} |
+
+## 汇款信息
+
+| 项目 | 内容 |
+| --- | --- |
+| 结算方式 | {{结算方式}} |
+| 币种及金额 | {{币种及金额}} |
+| 金额大写 | {{金额大写}} |
+| 交易编码 | {{交易编码}} |
+| 交易附言 | {{交易附言}} |
+| 费用承担方式 | {{费用承担方式}} |
+
+## 申报声明
+
+本单位承诺以上申报内容真实、准确、完整，并承担相应法律责任。
+
+申请人签章：{{申请人签章}}　　　　银行经办：{{银行经办}}
+`;
+
 const jobs = [
   { markdown: BID_MD, rulesetId: 'bid-default', name: '投标文件（演示）.docx', templateName: '投标文件模板（演示）' },
   { markdown: LAB_MD, rulesetId: 'lab-report-default', name: '实验报告（演示）.docx', templateName: '实验报告模板（演示）' },
@@ -243,6 +287,9 @@ const jobs = [
   // 特殊条目：带 {{占位符}} 的投标文件模板 —— 封面/投标函用占位符，商务/技术/报价章节保留 ××× 引导文案。
   // 产物 docx 仅作为模板源，主要演示 template_read（提取占位符）+ template_instantiate（填值实例化）。
   { markdown: BID_PLACEHOLDER_MD, rulesetId: 'bid-default', name: '投标文件占位符模板（演示）.docx', templateName: '投标文件占位符模板（演示）' },
+  // 特殊条目：带 {{占位符}} 的境外汇款申请书模板 —— 占位符位于字段表格（w:tbl）单元格内，
+  // 演示 extractPlaceholders 的 walkParagraphs 对表格单元格段落的覆盖与 findReplace 单元格内填值。
+  { markdown: FX_PLACEHOLDER_MD, rulesetId: 'fx-form-default', name: '境外汇款申请书占位符模板（演示）.docx', templateName: '境外汇款申请书占位符模板（演示）' },
 ];
 
 const ws = new Workspace(workspaceDir);

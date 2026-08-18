@@ -275,6 +275,67 @@ test('docgen 产物含 {{占位符}}：extractPlaceholders 可提取；实例化
   cleanup();
 });
 
+test('表格单元格内 {{占位符}}：extractPlaceholders 可提取（walkParagraphs 覆盖 w:tbl 单元格）；实例化填值后单元格文本含填入值且无残留', () => {
+  const { ws, cleanup } = freshWorkspace();
+  const md = [
+    '# 境外汇款申请书',
+    '',
+    '银行业务编号：{{银行业务编号}}　　　　日期：{{日期}}',
+    '',
+    '## 汇款人信息',
+    '',
+    '| 项目 | 内容 |',
+    '| --- | --- |',
+    '| 汇款人名称 | {{汇款人名称}} |',
+    '| 主体标识码（统一社会信用代码） | {{主体标识码}} |',
+    '| 汇款人账号 | {{汇款人账号}} |',
+    '',
+    '## 汇款信息',
+    '',
+    '| 项目 | 内容 |',
+    '| --- | --- |',
+    '| 结算方式 | {{结算方式}} |',
+    '| 币种及金额 | {{币种及金额}} |',
+    '| 金额大写 | {{金额大写}} |',
+  ].join('\n');
+  const { docId } = ws.generateDocument(md, 'fx-form-default', '境外汇款申请书（占位符源）.docx');
+
+  // 提取：表格单元格（w:tc 内 w:p）中的占位符必须被 walkParagraphs 覆盖提取到
+  const ph = extractPlaceholders(ws.getDocumentBuffer(docId));
+  const names = ph.map((p) => p.name).sort();
+  assert.equal(names.length, 8, '提取到 8 个占位符（含表格单元格内 6 个）');
+  assert.deepEqual(names, ['主体标识码', '日期', '汇款人账号', '汇款人名称', '结算方式', '币种及金额', '金额大写', '银行业务编号'].sort());
+
+  // 上传为模板 → 实例化填值
+  const { templateId } = ws.uploadTemplate(ws.getDocumentBuffer(docId), '境外汇款申请书占位符模板');
+  const { docId: newDocId, replaced, errors } = ws.instantiateTemplate(templateId, {
+    银行业务编号: 'FX-2026-0001',
+    日期: '2026 年 08 月 18 日',
+    汇款人名称: '×××贸易有限公司',
+    主体标识码: '91××××××××××××××××',
+    汇款人账号: '6222××××××××1234',
+    结算方式: '电汇 T/T',
+    币种及金额: '美元 50,000.00',
+    金额大写: '伍万美元整',
+  }, '境外汇款申请书（已填值）.docx');
+  assert.equal(errors.length, 0);
+  assert.ok(replaced.length >= 8, `应替换 8 处占位符，实际 ${replaced.length}`);
+
+  // 重解析产物：表格单元格文本含填入值、不含任何 {{占位符}}
+  // 注意 w:tc 嵌套在 w:tr 下，需 tbl → tr → tc 两级展开。
+  const doc = openDocx(ws.getDocumentBuffer(newDocId));
+  const body = docBody(doc);
+  const cellTexts = findChildren(body, 'w:tbl').flatMap((tbl) =>
+    findChildren(tbl, 'w:tr').flatMap((tr) => findChildren(tr, 'w:tc').map((tc) => textOf(tc))),
+  );
+  assert.ok(cellTexts.some((t) => t.includes('×××贸易有限公司')), '表格单元格：汇款人名称已填入');
+  assert.ok(cellTexts.some((t) => t.includes('美元 50,000.00')), '表格单元格：币种及金额已填入');
+  assert.ok(cellTexts.some((t) => t.includes('伍万美元整')), '表格单元格：金额大写已填入');
+  assert.ok(cellTexts.some((t) => t.includes('电汇 T/T')), '表格单元格：结算方式已填入');
+  assert.ok(!cellTexts.some((t) => t.includes('{{')), '表格单元格无占位符残留');
+  cleanup();
+});
+
 test('template_instantiate 工具：execute 填值实例化入库；模板不存在/坏参数走 isError', async () => {
   const { ws, cleanup } = freshWorkspace();
   const byName = Object.fromEntries(createTools(ws).map((t) => [t.name, t]));
