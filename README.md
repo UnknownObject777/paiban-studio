@@ -47,7 +47,7 @@ MVP 规格已确认（2026-08-02，`docs/mvp-spec.md`），进度边界如下（
 | TypeScript 迁移（issue #12） | ✅ 已合入 | 全量 TS（src/test/preview）+ tsc 构建链路，类型检查 0 错误 |
 | 交互重写：两相工作台（issue #31） | ✅ 已合入 | ChatGPT 式 landing → 编辑态（对话左移 + 大预览 + 流式瀑布 + 可感知进度），状态机 22 例 |
 | 一句话生成（markdown+规则集→docx） | ✅ 已合入 | `src/docgen/` + `doc_generate` 工具 + landing 一键生成；标书/外汇单规则集；Word 端人工验收通过 |
-| 预览内核替换为 OnlyOffice 静态 SDK | 🚧 进行中 | 已 checkpoint（回环静态服务器 + 只读渲染）；x2t wasm 内存 OOM 排查中 |
+| 预览内核替换为 OnlyOffice 静态 SDK | ✅ 只读渲染已可用 | 完整编辑器渲染路径实测通过（2026-08-18，生成标书 7 页即时渲染）；`?x2t-only` 隔离诊断降级为调试开关；超大文档 wasm 内存边界仍待回归观察 |
 | 真实 LLM 链路测试 | ⏳ 待做 | `PAIBAN_E2E=1` + 模型凭证启用（默认跳过）；mock LLM 全链路已在默认套件覆盖 |
 | Word/WPS 双端人工验证 | ⏳ 待做 | 发布前人工打开确认版式一致（spec 首要风险收口） |
 | electron-builder 打包分发 | ⏳ 待做 | 三平台（Win NSIS / macOS DMG / Kylin AppImage） |

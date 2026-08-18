@@ -56,32 +56,10 @@ window.addEventListener('message', (ev) => {
 
 parent.postMessage({ type: 'preview-ready' }, '*');
 
-// ---- 临时诊断（冒烟后删除）----
-console.log('[diag] isSecureContext=', window.isSecureContext, 'DecompressionStream=', 'DecompressionStream' in globalThis);
-import('./onlyoffice-comp/internal/vendor/brotli-dec/index.js')
-  .then((m) => console.log('[diag] page import brotli OK:', Object.keys(m)))
-  .catch((e) => console.error('[diag] page import brotli FAIL:', e));
-fetch('/public/packages/onlyoffice/9.4.0-develop/x2t/x2t.wasm')
-  .then(async (r) => {
-    const b = new Uint8Array(await r.arrayBuffer());
-    console.log('[diag] wasm fetch status=', r.status, 'head=', Array.from(b.slice(0, 4)), 'len=', b.length);
-  })
-  .catch((e) => console.error('[diag] wasm fetch FAIL:', e));
-
-// x2t 隔离测试：跳过 OnlyOffice 编辑器，只跑 docx → Editor.bin 转换，定位 OOM 来源
+// x2t 隔离测试（?x2t-only 调试入口）：跳过 OnlyOffice 编辑器，只跑 docx → Editor.bin 转换。
+// 2026-08-18：完整渲染路径已验证可用，本路径仅留作转换层问题排查开关。
 import { converter } from './onlyoffice-comp/internal/editor/x2t.js';
 import { getX2tConvertFormats } from './onlyoffice-comp/internal/editor/utils.js';
-
-// Wasm 内存分配对照实验：page vs module worker
-try {
-  const m = new WebAssembly.Memory({ initial: 4536, maximum: 32768 });
-  console.log('[diag] page WasmMemory(283MB/2GB) OK:', m.buffer.byteLength);
-} catch (e) {
-  console.error('[diag] page WasmMemory FAIL:', (e as Error).message);
-}
-const memTestWorker = new Worker(new URL('./worker-mem-test.js', import.meta.url), { type: 'module' });
-memTestWorker.onmessage = (e) => console.log('[diag] worker-mem-test:', JSON.stringify(e.data));
-memTestWorker.onerror = (e) => console.error('[diag] worker-mem-test error:', e.message);
 
 async function renderX2tOnly(buffer: ArrayBuffer): Promise<void> {
   const { formatFrom, formatTo } = getX2tConvertFormats('docx');
