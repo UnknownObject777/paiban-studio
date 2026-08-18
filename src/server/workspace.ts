@@ -1,7 +1,7 @@
 // server/workspace.ts — 工作台服务层（主进程业务核心，headless 可测）。
 //
 // 汇聚 docx 编辑内核 / 存储版本链 / 模板库，向 IPC 层与 agent 工具层提供统一接口：
-//   文档：uploadDocument / getDocumentBuffer / applyCommands（编辑 + 自动快照）/ outline / download
+//   文档：uploadDocument / generateDocument / getDocumentBuffer / applyCommands（编辑 + 自动快照）/ outline / download
 //   版本：listVersions / getVersionBuffer / rollback
 //   模板：uploadTemplate / listTemplates / readTemplate / instantiateTemplate / templateRulesetCommands
 //   内置规则集：listBuiltinRulesets / builtinRulesetCommands（templates/rulesets/ 手写资产，#29）
@@ -17,6 +17,7 @@ import { VersionStore } from '../storage/versionStore.js';
 import { TemplateStore } from '../templates/templateStore.js';
 import { applyEdits } from '../docx-core/applyEdits.js';
 import { dumpOutline } from '../docx-core/outline.js';
+import { generateFromMarkdown } from '../docgen/generate.js';
 import { loadRuleset } from '../ruleset/load.js';
 import { rulesetToCommands } from '../templates/rulesetToCommands.js';
 import type { EditCommand } from '../docx-core/applyEdits.js';
@@ -146,6 +147,17 @@ export class Workspace {
 
   // ---- 内置规则集（templates/rulesets/ 手写资产，反推链路的保底路径，issue #29） ----
 
+  /** 校验 rulesetId 并定位其目录（列表提示逻辑与 builtinRulesetCommands 共用）。 */
+  private resolveBuiltinRulesetDir(rulesetId: string): string {
+    if (!/^[\w-]+$/.test(rulesetId)) throw new Error(`非法规则集 id：${rulesetId}`);
+    const dir = join(BUILTIN_RULESETS_DIR, rulesetId);
+    if (!existsSync(dir)) {
+      const known = this.listBuiltinRulesets().map((r) => r.id).join(', ') || '（无）';
+      throw new Error(`内置规则集不存在：${rulesetId}；可用：${known}`);
+    }
+    return dir;
+  }
+
   /** 列出内置规则集：id + 描述（取 styles.json 的 description 字段）。 */
   listBuiltinRulesets(): Array<{ id: string; description: string }> {
     if (!existsSync(BUILTIN_RULESETS_DIR)) return [];
@@ -162,14 +174,21 @@ export class Workspace {
 
   /** 内置规则集 → 内核命令（loadRuleset 校验 + rulesetToCommands 翻译，"按实验报告排版"）。 */
   builtinRulesetCommands(rulesetId: string): EditCommand[] {
-    if (!/^[\w-]+$/.test(rulesetId)) throw new Error(`非法规则集 id：${rulesetId}`);
-    const dir = join(BUILTIN_RULESETS_DIR, rulesetId);
-    if (!existsSync(dir)) {
-      const known = this.listBuiltinRulesets().map((r) => r.id).join(', ') || '（无）';
-      throw new Error(`内置规则集不存在：${rulesetId}；可用：${known}`);
-    }
+    const dir = this.resolveBuiltinRulesetDir(rulesetId);
     const { recognizers, styles } = loadRuleset(dir);
     return rulesetToCommands(recognizers, styles);
+  }
+
+  /** markdown + 内置规则集 → 新工作文档（"一句话生成标书/实验报告"的地基）。 */
+  generateDocument(markdown: string, rulesetId: string, name?: string): { docId: string; version: VersionEntry; name: string } {
+    const dir = this.resolveBuiltinRulesetDir(rulesetId);
+    const { recognizers, styles } = loadRuleset(dir);
+    const buffer = generateFromMarkdown(markdown, { recognizers, styles });
+    const docName = name || '生成文档.docx';
+    const { docId, version } = this.versions.createDocument(buffer, {
+      name: docName, origin: 'generate', note: `由 markdown 生成（规则集 ${rulesetId}）`,
+    });
+    return { docId, version, name: docName };
   }
 
   // ---- 配置（R4：界面配置 > 环境变量 > 默认值） ----

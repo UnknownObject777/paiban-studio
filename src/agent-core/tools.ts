@@ -3,6 +3,7 @@
 // 工具（+ 结构 dump 工具）全部收敛到 Workspace 服务层：
 //   doc_outline    文档结构 dump（dump → batch 往返的 dump 端，D6）
 //   doc_edit       编辑命令批（走唯一 seam applyEdits + 自动快照）
+//   doc_generate   从零生成新文档（markdown + 内置规则集 → 规范排版 docx）
 //   template_read  模板规则集 / 占位符 / 大纲读取
 //   ruleset_read   内置规则集（手写资产）列表 / 规则集命令读取（#29）
 //   version_store  版本列表 / 回滚
@@ -109,6 +110,38 @@ export function createTools(workspace: Workspace): AgentTool[] {
           versionCreated: r.versionCreated,
           selfCheck: r.selfCheck,
         }, r.errors.length > 0);
+      },
+    },
+    {
+      name: 'doc_generate',
+      label: 'Document Generate',
+      description: '从零生成新 docx 文档：markdown（# 题目 / ## 章节 / GFM 表格）+ 内置排版规则集 → 规范排版的 Word 文档，自动入库为新工作文档（v1）。用于"一句话生成标书/实验报告"等从零开始的新文档场景。',
+      promptSnippet: 'Generate a new Word document from markdown with a builtin ruleset',
+      promptGuidelines: [
+        'doc_generate 用于从零生成新文档；修改/排版已有文档用 doc_edit。',
+        'rulesetId 取值先用 ruleset_read 列出内置规则集（如 lab-report-default / gongwen-default）。',
+        'markdown 约定：第一个 # 是文档题目，## 是章节标题；报价表/申报字段表用 GFM 表格（| 表头 | ... | 加分隔行 | --- |）；支持 **粗体** 等行内格式。',
+        '生成后可用 doc_outline 查看产物结构，再按需用 doc_edit 微调。',
+      ],
+      parameters: {
+        type: 'object',
+        properties: {
+          markdown: { type: 'string', description: 'markdown 文本：第一个 # 为文档题目、## 为章节标题、GFM 表格写报价/字段表，支持 **粗体**/*斜体*/`代码` 行内格式' },
+          rulesetId: { type: 'string', description: '内置排版规则集 ID（先用 ruleset_read 列出，如 lab-report-default / gongwen-default）' },
+          name: { type: 'string', description: '生成文档的文件名（省略时默认"生成文档.docx"）' },
+        },
+        required: ['markdown', 'rulesetId'],
+      },
+      executionMode: 'sequential',
+      async execute(_id: string, params: Record<string, any>) {
+        if (typeof params.markdown !== 'string' || !params.markdown.trim()) {
+          return jsonResult({ error: 'markdown 必须是非空字符串' }, true);
+        }
+        try {
+          return jsonResult(workspace.generateDocument(params.markdown, params.rulesetId, params.name));
+        } catch (err) {
+          return jsonResult({ error: (err as Error).message }, true);
+        }
       },
     },
     {
