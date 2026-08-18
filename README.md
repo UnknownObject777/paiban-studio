@@ -166,6 +166,8 @@ PAIBAN_E2E=1 ANTHROPIC_API_KEY=sk-... npm run test:e2e-agent
 PAIBAN_E2E=1 PAIBAN_BASE_URL=http://... PAIBAN_API_KEY=... PAIBAN_MODEL=... npm run test:e2e-agent
 ```
 
+覆盖两个场景：对话改排版（doc_edit 落文档断言）与一句话从零生成投标文件（doc_generate 入版本链 + 内容自查）。
+
 断言 agent 收到「标题改黑体三号居中」后**经 doc_edit 工具真正落到文档**（新版本 + `/body/p[1]` 变黑体/16pt/居中），不听 agent 自述。
 
 ## 开发指南

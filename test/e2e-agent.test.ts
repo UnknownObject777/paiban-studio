@@ -72,3 +72,54 @@ test('agent 用工具完成"标题改黑体三号居中"并落到文档', { skip
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('agent 一句话从零生成投标文件（doc_generate 真实链路）', { skip: SKIP, timeout: 300000 }, async () => {
+  const { Workspace } = await import('../src/server/workspace.js');
+  const { AgentBridge } = await import('../src/agent-core/bridge.js');
+  const { openDocx } = await import('../src/docx-core/docx.js');
+  const { isElement, childrenOf } = await import('../src/docx-core/ooxml.js');
+
+  const dir = mkdtempSync(join(tmpdir(), 'paiban-e2e-gen-'));
+  try {
+    const ws = new Workspace(dir);
+    if (process.env.PAIBAN_BASE_URL || process.env.PAIBAN_MODEL) {
+      ws.setConfig({
+        baseUrl: process.env.PAIBAN_BASE_URL,
+        model: process.env.PAIBAN_MODEL,
+        apiKey: process.env.PAIBAN_API_KEY,
+      });
+    }
+    const before = new Set(ws.listDocuments().map((d) => d.docId));
+
+    const bridge = new AgentBridge(ws);
+    await bridge.init();
+    assert.equal(bridge.status().ready, true, `agent 未就绪: ${bridge.status().reason}`);
+
+    // 无 docId：模拟 landing「生成投标文件」一键入口（控制篇幅压低 token 消耗）
+    const r = await bridge.send(undefined, '帮我起草一份小型办公用品采购项目的投标文件，控制在两页以内，按 bid-default 规则集生成。');
+    assert.equal(r.ok, true);
+
+    // 自查：新文档入库、版本链 v1、内容确为投标文件（不听 agent 自述）
+    const created = ws.listDocuments().filter((d) => !before.has(d.docId));
+    assert.equal(created.length, 1, '应恰好生成一个新文档');
+    const docId = created[0].docId;
+    const versions = ws.listVersions(docId);
+    assert.ok(versions.length >= 1 && versions[0].id === 'v1', '应有 v1 版本');
+
+    const doc = openDocx(ws.getDocumentBuffer(docId));
+    const docEl = doc.parts.get('word/document.xml')!.tree!.find((n) => isElement(n, 'w:document'));
+    let text = '';
+    const visit = (n: unknown): void => {
+      for (const c of childrenOf(n as never)) {
+        if ((c as Record<string, unknown>)['#text'] !== undefined) text += (c as Record<string, string>)['#text'];
+        else visit(c);
+      }
+    };
+    visit(docEl);
+    assert.ok(text.includes('投标'), '生成内容应与投标相关');
+    assert.ok(/函|方案|报价|资格/.test(text), '应含标书常见章节（投标函/方案/报价/资格…）');
+    assert.ok(text.length > 100, '应有实质内容');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
