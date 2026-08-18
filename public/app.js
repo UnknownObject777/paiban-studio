@@ -42,7 +42,7 @@ function renderPhase() {
     $('#current-doc-name').textContent = flow.docName || '';
     $('#current-doc-name').title = flow.docName || '';
   }
-  $('#chat-input').placeholder = editing ? '对当前文档说点什么…' : '打开文档后，对 AI 说你想怎么排…';
+  $('#chat-input').placeholder = editing ? '对当前文档说点什么…' : '对 AI 说想怎么排；没开文档也能直接说「生成一份投标文件」…';
 }
 
 // ---- 瀑布流条目（增量：只增不删，按 id 复用节点） ----
@@ -122,8 +122,8 @@ function renderBusy() {
   $('#btn-send').classList.toggle('hidden', flow.busy);
   $('#btn-abort').classList.toggle('hidden', !flow.busy);
   $('#chat-input').disabled = flow.busy;
-  // 规格：无文档时发送禁用（输入框保留，供查看示例；拒绝分支仍由状态机兜底）
-  $('#btn-send').disabled = !flow.docId;
+  // 无文档也可发送：doc_generate 支持一句话从零生成新文档（无需先打开文档）
+  $('#btn-send').disabled = false;
 }
 
 // ---- 预览（防抖刷新，D4：编辑 → ArrayBuffer → iframe） ----
@@ -152,6 +152,10 @@ window.paiban.onAgentEvent((event) => {
     refreshPreview();
     loadVersions();
   }
+  if (event.type === 'tool_end' && event.name === 'doc_generate' && !event.isError && event.details?.docId) {
+    // 生成成功：立即选中新文档并加载预览（让用户马上看到产物）
+    openGeneratedDocument(event.details);
+  }
   if (event.type === 'done') {
     refreshPreview();
     loadVersions();
@@ -166,12 +170,9 @@ $('#chat-form').addEventListener('submit', async (ev) => {
   const input = $('#chat-input');
   const text = input.value.trim();
   if (!text || flow.busy) return;
-  if (!flow.docId) {
-    dispatch({ type: 'send', text }); // 状态机落「请先打开文档」错误卡
-    return;
-  }
   input.value = '';
   dispatch({ type: 'send', text });
+  // docId 可为空：doc_generate 支持从零生成新文档（无需先打开文档）
   const r = await window.paiban.agentSend(flow.docId, text);
   if (!r.ok) dispatch({ type: 'error', message: r.error || 'agent 发送失败' });
 });
@@ -209,10 +210,16 @@ document.querySelectorAll('.view-tab').forEach((tab) => {
 
 async function openDocFlow(openResult) {
   if (!openResult) return;
-  dispatch({ type: 'doc_opened', docId: openResult.docId, name: openResult.name ?? openResult.docId, versionId: openResult.version?.id ?? openResult.head });
+  dispatch({ type: 'doc_opened', docId: openResult.docId, name: openResult.name ?? openResult.docId, versionId: openResult.version?.id ?? openResult.head, note: openResult.note });
   $('#btn-download').disabled = false;
   await Promise.all([loadDocuments(), loadVersions()]);
   refreshPreview();
+}
+
+// doc_generate 成功：刷新文档列表并选中新文档（openDocFlow 内部已刷新列表 + 加载预览）
+async function openGeneratedDocument(details) {
+  const name = details.name ?? details.docId;
+  await openDocFlow({ docId: details.docId, name, versionId: details.version?.id, note: `已生成《${name}》` });
 }
 
 async function openDocViaDialog() {

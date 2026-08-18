@@ -3,7 +3,7 @@
 // 覆盖规格 Testing Decisions 的全部点位：
 //   landing → editing 转换；瀑布流条目序列（text_delta 累积 / tool_start 截断 / tool_end 回填）；
 //   进度模型推导（步骤链顺序与标签映射、状态迁移、done 收尾、error 置失败态、abort 复位）；
-//   无文档发送被拒分支。
+//   无文档发送直通（doc_generate 支持从零生成新文档）。
 // 只测状态机对事件序列的输出（外部行为），不测 DOM。
 
 import { test } from 'node:test';
@@ -39,6 +39,11 @@ test('doc_opened：进入 editing 并落下版本卡', () => {
   assert.equal((s.items[0] as any).versionId, 'v1');
 });
 
+test('doc_opened：note 覆盖版本卡文案（doc_generate 自动打开新文档用）', () => {
+  const s = reduce(createFlow(), { type: 'doc_opened', docId: 'g1', name: '投标文件.docx', versionId: 'v1', note: '已生成《投标文件.docx》' });
+  assert.equal((s.items[0] as any).note, '已生成《投标文件.docx》');
+});
+
 test('back_to_landing：回到 landing，条目与文档上下文保留', () => {
   let s = reduce(createFlow(), { type: 'doc_opened', docId: 'd1', name: '通知.docx', versionId: 'v1' });
   s = reduce(s, { type: 'back_to_landing' });
@@ -49,11 +54,13 @@ test('back_to_landing：回到 landing，条目与文档上下文保留', () => 
 
 // ---- 发送 ----
 
-test('无文档时 send：不落用户消息，只落错误提示，仍处 landing', () => {
-  const s = reduce(createFlow(), { type: 'send', text: '标题居中' });
+test('无文档时 send：直接进入发送（doc_generate 支持从零生成），落用户消息并置忙', () => {
+  let s = reduce(createFlow(), { type: 'send', text: '帮我起草一份投标文件，项目名称为×××，按 bid-default 规则集生成' });
   assert.equal(s.phase, 'landing');
-  assert.equal(s.busy, false);
-  assert.deepEqual(kinds(s.items), ['error']);
+  assert.equal(s.busy, true);
+  const last = s.items[s.items.length - 1];
+  assert.equal(last.kind, 'user');
+  assert.equal((last as any).text, '帮我起草一份投标文件，项目名称为×××，按 bid-default 规则集生成');
 });
 
 test('有文档时 send：落用户消息并置忙；空文本为无操作', () => {

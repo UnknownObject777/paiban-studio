@@ -1,7 +1,7 @@
 // agent-core/bridge.ts — pi agent 接入层（spec 模块 2，调研 #3 路径 1：SDK 主进程内嵌）。
 //
 // 职责：
-//   - createAgentSession() 内嵌，tools 白名单只放自研五工具（裁剪内置文件工具，防绕过编辑内核）
+//   - createAgentSession() 内嵌，tools 白名单只放自研六工具（裁剪内置文件工具，防绕过编辑内核）
 //   - LLM provider（R4）：Anthropic（apiKey 直连）/ OpenAI 兼容端点（models.json 声明，含
 //     DeepSeek/Kimi/Qwen/Ollama/vLLM/本地网关）；界面配置 > 环境变量 > 默认值
 //   - 事件流翻译为渲染层友好事件（text_delta / tool_start / tool_end / done / error）
@@ -13,14 +13,22 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { createTools } from './tools.js';
 import type { Workspace } from '../server/workspace.js';
 
-const SYSTEM_PRIMER = `你是「排版工作台」的文档排版助手，专门处理中文公文 Word 文档（.docx）。
+const SYSTEM_PRIMER = `你是「排版工作台」的文档排版助手，专门处理中文办公 Word 文档（.docx）：排版已有文档、或从零生成新文档（标书、实验报告、外汇申报单等）。
 
 工作方式（必须遵守）：
-1. 一切文档修改只能调用 doc_edit 工具；不要尝试直接读写文件。
+1. 修改已有文档只能调用 doc_edit；从零生成新文档调用 doc_generate。不要尝试直接读写文件。
 2. 修改前先调用 doc_outline 获取段落路径，按路径精确寻址（/body/p[N]/r[M]）。
 3. 每次 doc_edit 成功后系统自动保存新版本；改坏了可用 version_store 回滚。
 4. 工具调用失败时阅读错误里的 suggestion 字段并自我修正后重试。
 5. 用户说"按实验报告排版"→ 用 ruleset_read 取内置规则集 lab-report-default；"按公文排版"→ gongwen-default；"按标书/投标文件排版"→ bid-default；"按外汇申报单/涉外收付款申报表单排版"→ fx-form-default；"按某个上传的模板排"→ template_read。取到 rulesetCommands 后原样传给 doc_edit。内置规则集是手写资产，优先于上传模板反推的规则集。
+
+第二工作模式（写/生成/起草新文档）：
+1. 用户要"写/生成/起草"新文档（标书、实验报告、外汇申报单等）时：先用 markdown 起草内容，再调 doc_generate（rulesetId 用 ruleset_read 列出的内置规则集 id，如 bid-default / lab-report-default / fx-form-default / gongwen-default）；生成后用一两句话汇报 docId 与文档名；用户后续要改就走 doc_outline + doc_edit。
+2. markdown 约定：# 文档题目（只一个）、## 章节标题、GFM 表格做报价表/字段表、**粗体** 强调。
+3. 领域结构（起草时遵循；缺失信息用「×××」占位，不要编造具体公司名/金额）：
+   - 投标文件：封面信息（项目名称/编号/投标人）→ 目录 → 投标函 → 法定代表人身份证明/授权委托书 → 商务部分（资质/业绩/财务）→ 技术部分（方案/实施计划/质量保证/服务承诺）→ 报价部分（开标一览表/分项报价表）→ 资格审查资料。
+   - 涉外收付款申报单（外汇单）：以字段表格为主——申报号码（银行编制）、日期、汇款人/收款人名称、主体标识码、结算方式（电汇/票汇/信汇）、币种及金额、交易编码、交易附言、申请人签章栏。
+   - 实验报告：实验目的 → 实验原理 → 仪器与材料 → 实验步骤 → 数据记录与处理（表格）→ 结果分析 → 结论。
 
 中文公文排版常识：
 - 字号：三号=16pt、小三=15pt、四号=14pt、小四=12pt、五号=10.5pt
@@ -30,6 +38,9 @@ const SYSTEM_PRIMER = `你是「排版工作台」的文档排版助手，专门
 - 中文字体用 eastAsia 属性设置；西文用 ascii。
 
 回复要求：简要说明做了什么修改、产生的新版本号；不要输出大段无关解释。`;
+
+/** agent 工具白名单：只放自研工具（裁剪内置文件工具，防绕过编辑内核）。 */
+export const TOOL_WHITELIST = ['doc_outline', 'doc_edit', 'doc_generate', 'template_read', 'ruleset_read', 'version_store'];
 
 export interface AgentStatus {
   ready: boolean;
@@ -42,7 +53,7 @@ export interface AgentStatus {
 export type AgentEvent =
   | { type: 'text_delta'; delta: string }
   | { type: 'tool_start'; name: string; args: string }
-  | { type: 'tool_end'; name: string; isError: boolean; summary: string }
+  | { type: 'tool_end'; name: string; isError: boolean; summary: string; details?: unknown }
   | { type: 'done' }
   | { type: 'error'; message: string }
   | { type: 'user'; message: string };
@@ -135,7 +146,7 @@ export class AgentBridge {
         modelRuntime,
         model,
         sessionManager: sdk.SessionManager.inMemory(),
-        tools: ['doc_outline', 'doc_edit', 'template_read', 'ruleset_read', 'version_store'], // 白名单：只自研工具
+        tools: TOOL_WHITELIST, // 白名单：只自研工具
         customTools: createTools(this.workspace),
       });
       this.session = session;
@@ -155,7 +166,7 @@ export class AgentBridge {
       } else if (e.type === 'tool_execution_start') {
         this._emit({ type: 'tool_start', name: e.toolName, args: summarizeArgs(e.args) });
       } else if (e.type === 'tool_execution_end') {
-        this._emit({ type: 'tool_end', name: e.toolName, isError: !!e.isError, summary: summarizeToolResult(e) });
+        this._emit({ type: 'tool_end', name: e.toolName, isError: !!e.isError, summary: summarizeToolResult(e), details: e.result?.details ?? e.details });
       } else if (e.type === 'agent_end') {
         this._emit({ type: 'done' });
       } else if (e.type === 'error' || e.type === 'agent_error') {
@@ -211,17 +222,23 @@ export class AgentBridge {
 
 // ---- 事件摘要 ----
 
-function summarizeArgs(args: any): string {
+export function summarizeArgs(args: any): string {
   if (!args || typeof args !== 'object') return '';
   if (args.commands) return `${args.commands.length} 条命令${args.note ? '：' + args.note : ''}`;
   if (args.action) return args.action + (args.versionId ? ' ' + args.versionId : '');
+  if (args.markdown) {
+    // doc_generate：markdown 可能很长，只显示行数与文档名/规则集
+    const mdLines = typeof args.markdown === 'string' ? args.markdown.trim().split(/\r?\n/).length : 0;
+    return `生成《${args.name || '新文档'}》（规则集 ${args.rulesetId ?? '?'}${mdLines ? `，markdown ${mdLines} 行` : ''}）`;
+  }
   if (args.templateId) return args.templateId;
   return Object.keys(args).join(', ');
 }
 
-function summarizeToolResult(e: any): string {
+export function summarizeToolResult(e: any): string {
   const d = e.result?.details ?? e.details;
   if (!d || typeof d !== 'object') return '';
+  if (d.docId && typeof d.name === 'string') return `《${d.name}》${d.version?.id ? ' · ' + d.version.id : ''}`; // doc_generate：文档名 + v1
   if (d.version) return `${d.version.id}${d.versionCreated ? '（新版本）' : ''}，applied ${d.applied?.length ?? 0}，errors ${d.errors?.length ?? 0}`;
   if (d.versions) return `${d.versions.length} 个版本`;
   if (d.templates) return `${d.templates.length} 个模板`;

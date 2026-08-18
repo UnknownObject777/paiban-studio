@@ -22,7 +22,7 @@
     <div class="landing-inner">
       <p class="eyebrow">AI TYPESETTING ENGINE</p>
       <h1 class="landing-title">用自然语言<br>指挥 AI 排版</h1>
-      <p class="dim">打开一篇排版混乱的 docx，然后直接说你想怎么排</p>
+      <p class="dim">打开一篇排版混乱的 docx 说怎么排，或一句话从零生成标书 / 实验报告 / 外汇申报单</p>
       <div id="landing-input-slot" class="input-slot">
         <form id="chat-form">
           <input id="chat-input" type="text" placeholder="打开文档后，对 AI 说你想怎么排…" autocomplete="off">
@@ -34,6 +34,12 @@
         <button type="button" class="suggest-chip" data-prompt="标题改成黑体三号居中">「标题改成黑体三号居中」</button>
         <button type="button" class="suggest-chip" data-prompt="正文统一仿宋四号，行距 28 磅">「正文统一仿宋四号、行距 28 磅」</button>
         <button type="button" class="suggest-chip" data-prompt="按《通知》模板的样式排">「按《通知》模板的样式排」</button>
+      </div>
+      <div class="gen-actions">
+        <span class="dim gen-label">一键生成</span>
+        <button type="button" class="suggest-chip gen-chip" data-prompt="帮我起草一份投标文件，项目名称为×××，按 bid-default 规则集生成">生成投标文件</button>
+        <button type="button" class="suggest-chip gen-chip" data-prompt="帮我起草一份实验报告，主题为×××，按 lab-report-default 规则集生成">生成实验报告</button>
+        <button type="button" class="suggest-chip gen-chip" data-prompt="帮我起草一份境外汇款申请书，按 fx-form-default 规则集生成">生成外汇申报单</button>
       </div>
       <div class="landing-actions">
         <button id="btn-open-doc-landing" class="btn pill solid big-action">打开 docx 开始</button>

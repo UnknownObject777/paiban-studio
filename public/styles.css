@@ -212,9 +212,20 @@ body {
 }
 .suggest-chip:hover { background: var(--ink); border-color: var(--ink); color: var(--paper-card); }
 
+/* 一键生成快捷入口：实心墨色 pill（与编辑类 suggest-chip 区分，仍是黑白 chrome） */
+.gen-actions { display: flex; flex-wrap: wrap; gap: var(--s1); justify-content: center; align-items: center; }
+.gen-label { font-size: 12px; letter-spacing: 0.05em; }
+.gen-chip { background: var(--ink); border-color: var(--ink); color: var(--paper-card); }
+.gen-chip:hover {
+  background: #35353a;
+  border-color: var(--ink);
+  color: var(--paper-card);
+  box-shadow: 0 2px 8px rgba(42, 42, 46, 0.25);
+}
+
 .big-action { font-size: 15px; padding: 12px 32px; }
 
-/* landing 唯一主行动线是「打开 docx」；发送按钮在 landing 降为描边（无文档时亦禁用） */
+/* landing 发送按钮降为描边（无文档时也可发送：doc_generate 从零生成新文档） */
 #landing #btn-send {
   background: transparent;
   color: var(--ink);

@@ -14,13 +14,13 @@
 export type AgentEvent =
   | { type: 'text_delta'; delta: string }
   | { type: 'tool_start'; name: string; args: string }
-  | { type: 'tool_end'; name: string; isError: boolean; summary: string }
+  | { type: 'tool_end'; name: string; isError: boolean; summary: string; details?: unknown }
   | { type: 'done' }
   | { type: 'error'; message: string };
 
 /** UI 动作（打开文档、发送、停止、返回首页、版本卡 / 便签卡补记） */
 export type UiAction =
-  | { type: 'doc_opened'; docId: string; name: string; versionId?: string }
+  | { type: 'doc_opened'; docId: string; name: string; versionId?: string; note?: string }
   | { type: 'send'; text: string }
   | { type: 'abort' }
   | { type: 'back_to_landing' }
@@ -58,6 +58,7 @@ export interface FlowState {
 export const TOOL_LABELS: Record<string, string> = {
   doc_outline: '分析文档结构',
   doc_edit: '应用排版修改',
+  doc_generate: '生成新文档',
   ruleset_read: '读取内置规则集',
   template_read: '读取模板',
   version_store: '保存 / 回滚版本',
@@ -88,7 +89,7 @@ export function reduce(state: FlowState, event: FlowEvent): FlowState {
         phase: 'editing',
         docId: event.docId,
         docName: event.name,
-      }, { kind: 'version', versionId: event.versionId ?? 'v1', note: `已打开《${event.name}》（原稿未动）` });
+      }, { kind: 'version', versionId: event.versionId ?? 'v1', note: event.note ?? `已打开《${event.name}》（原稿未动）` });
 
     case 'back_to_landing':
       // 文档上下文与对话保留：回到首页后可直接继续对同一文档发指令
@@ -97,9 +98,7 @@ export function reduce(state: FlowState, event: FlowEvent): FlowState {
     case 'send': {
       const text = event.text.trim();
       if (!text) return state;
-      if (!state.docId) {
-        return push(state, {}, { kind: 'error', message: '请先打开或选择一篇工作文档。' });
-      }
+      // 无文档也可发送：doc_generate 支持从零生成新文档（不依赖已打开文档）
       // 新一轮：进度链从此处重新计数
       return push(state, { busy: true, roundStartId: state.nextId, lastOutcome: null }, { kind: 'user', text });
     }
