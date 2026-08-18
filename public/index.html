@@ -44,6 +44,7 @@
       </div>
       <div class="landing-actions">
         <button id="btn-open-doc-landing" class="btn pill solid big-action">打开 docx 开始</button>
+        <button id="btn-from-template" class="btn pill ghost">从模板填字段出稿</button>
       </div>
       <div id="landing-recents" class="landing-recents"></div>
       <p class="dim small-note">所有修改只作用于工作副本，原始文件不会被改动</p>
@@ -136,6 +137,15 @@
   <div class="modal-actions">
     <button class="btn pill ghost" data-close>关闭</button>
     <button class="btn pill solid" id="btn-instantiate">实例化为新文档</button>
+  </div>
+</dialog>
+
+<!-- landing：从模板填字段出稿（纯本地路径，无需 agent）的模板选择器 -->
+<dialog id="template-picker-dialog" class="modal">
+  <h3>选择模板</h3>
+  <ul id="template-picker-list" class="item-list"></ul>
+  <div class="modal-actions">
+    <button class="btn pill ghost" data-close>取消</button>
   </div>
 </dialog>
 

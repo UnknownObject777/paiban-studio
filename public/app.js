@@ -249,6 +249,29 @@ $('#btn-open-doc').addEventListener('click', async () => {
 });
 $('#btn-open-doc-landing').addEventListener('click', openDocViaDialog);
 
+// landing「从模板填字段出稿」：纯本地路径（无需 agent/LLM），
+// 选模板 → 填占位符（复用模板详情对话框）→ 实例化 → 进入编辑态预览。
+$('#btn-from-template').addEventListener('click', async () => {
+  const templates = await window.paiban.listTemplates();
+  const list = $('#template-picker-list');
+  list.innerHTML = '';
+  if (!templates.length) {
+    list.innerHTML = '<li class="item"><span class="dim">暂无模板：打开任意文档后，在「模板」抽屉上传公司范本即可沉淀为模板</span></li>';
+  }
+  for (const t of templates) {
+    const li = document.createElement('li');
+    li.className = 'item';
+    li.innerHTML = `<span class="name">${escapeHtml(t.name)}</span>
+      <span class="meta">${t.placeholderCount} 个占位符</span>`;
+    li.addEventListener('click', () => {
+      $('#template-picker-dialog').close();
+      openTemplateDialog(t.templateId);
+    });
+    list.appendChild(li);
+  }
+  $('#template-picker-dialog').showModal();
+});
+
 async function loadDocuments() {
   const docs = await window.paiban.listDocuments();
   const ul = $('#doc-list');
@@ -358,10 +381,12 @@ $('#btn-upload-template').addEventListener('click', async () => {
 });
 
 let dialogTemplateId = null;
+let dialogTemplateName = '';
 
 async function openTemplateDialog(templateId) {
   dialogTemplateId = templateId;
   const t = await window.paiban.readTemplate(templateId);
+  dialogTemplateName = t.meta.name || '';
   $('#template-dialog-title').textContent = t.meta.name;
   const body = $('#template-dialog-body');
   body.innerHTML = '';
@@ -397,10 +422,11 @@ $('#btn-instantiate').addEventListener('click', async () => {
   document.querySelectorAll('#template-dialog-body input[data-ph]').forEach((input) => {
     if (input.value.trim()) values[input.dataset.ph] = input.value.trim();
   });
-  const r = await window.paiban.instantiateTemplate(dialogTemplateId, values);
+  const name = dialogTemplateName ? `${dialogTemplateName.replace(/[（(].*$/, '')}-实例化.docx` : undefined;
+  const r = await window.paiban.instantiateTemplate(dialogTemplateId, values, name);
   $('#template-dialog').close();
   $('#drawer-templates').close();
-  await openDocFlow({ docId: r.docId, name: r.name ?? r.docId, versionId: r.version?.id });
+  await openDocFlow({ docId: r.docId, name: r.name ?? name ?? r.docId, versionId: r.version?.id });
 });
 
 // ---- 内置规则集（模板抽屉内，一键重排当前文档） ----
