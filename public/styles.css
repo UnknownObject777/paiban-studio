@@ -198,6 +198,18 @@ body {
 .input-slot { width: 100%; }
 
 .suggest-chips { display: flex; flex-wrap: wrap; gap: var(--s1); justify-content: center; }
+
+/* landing 相位无对话流渲染，agent 错误就地提示（虚线呼应 focus 指示，黑白 chrome） */
+.landing-error {
+  margin: 0 auto;
+  max-width: 560px;
+  font-size: 13px;
+  color: var(--ink);
+  border: 1px dashed var(--ink-40);
+  border-radius: 8px;
+  padding: 8px 16px;
+  background: rgba(0, 0, 0, 0.04);
+}
 .suggest-chip {
   font-family: var(--font-song);
   font-size: 13px;

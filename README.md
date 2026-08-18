@@ -46,6 +46,7 @@ MVP 规格已确认（2026-08-02，`docs/mvp-spec.md`），进度边界如下（
 | 核心五模块（issue #2） | ✅ 已实现并合入 `main` | 编辑内核 / 存储版本链 / 模板层 / agent 接入 / 工作台 UI |
 | TypeScript 迁移（issue #12） | ✅ 已合入 | 全量 TS（src/test/preview）+ tsc 构建链路，类型检查 0 错误 |
 | 交互重写：两相工作台（issue #31） | ✅ 已合入 | ChatGPT 式 landing → 编辑态（对话左移 + 大预览 + 流式瀑布 + 可感知进度），状态机 22 例 |
+| 一句话生成（markdown+规则集→docx） | ✅ 已合入 | `src/docgen/` + `doc_generate` 工具 + landing 一键生成；标书/外汇单规则集；Word 端人工验收通过 |
 | 预览内核替换为 OnlyOffice 静态 SDK | 🚧 进行中 | 已 checkpoint（回环静态服务器 + 只读渲染）；x2t wasm 内存 OOM 排查中 |
 | 真实 LLM 链路测试 | ⏳ 待做 | `PAIBAN_E2E=1` + 模型凭证启用（默认跳过）；mock LLM 全链路已在默认套件覆盖 |
 | Word/WPS 双端人工验证 | ⏳ 待做 | 发布前人工打开确认版式一致（spec 首要风险收口） |
@@ -53,7 +54,7 @@ MVP 规格已确认（2026-08-02，`docs/mvp-spec.md`），进度边界如下（
 
 ### 下一期（Roadmap）
 
-**Markdown + 模板 → 规范 docx**：输入一篇 markdown 文稿和一个排版模板（或内置规则集），直接产出符合规范的 Word 文档——把「写内容」和「排版」彻底分开，内容在编辑器里写 markdown，排版交给规则集。当前期已具备全部地基：规则集反推（模板 → 样式命令）、`normalize` 全文重排、round-trip 保真内核；缺的是 markdown → 文档结构（标题/正文/列表/表格）的映射层。
+**~~Markdown + 模板 → 规范 docx~~ ✅ 已落地（2026-08-18）**：`src/docgen/` 映射层（markdown → 标题/正文/列表/GFM 表格 → 排版组件）+ `doc_generate` agent 工具 + landing 一键生成入口（投标文件 / 实验报告 / 外汇申报单）。内置规则集增至 4 套：`gongwen-default`、`lab-report-default`、`bid-default`（标书）、`fx-form-default`（外汇申报单）。演示文档预置：`node scripts/seed-demo-docs.mjs`（需先 `npm run build`）。
 
 MVP 边界（In / Out of Scope 精简版，完整版见 `docs/mvp-spec.md`）：
 

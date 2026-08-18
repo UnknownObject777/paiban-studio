@@ -148,6 +148,7 @@ window.addEventListener('message', (ev) => {
 
 window.paiban.onAgentEvent((event) => {
   dispatch(event);
+  if (event.type === 'error') showLandingError(event.message);
   if (event.type === 'tool_end' && (event.name === 'doc_edit' || event.name === 'version_store') && !event.isError) {
     refreshPreview();
     loadVersions();
@@ -165,16 +166,31 @@ window.paiban.onAgentEvent((event) => {
 
 // ---- 对话发送 / 中断 ----
 
+// landing 相位没有对话流渲染，agent 错误需就地可见（未就绪/发送失败）
+function showLandingError(message) {
+  if (flow.phase !== 'landing' || !message) return;
+  const el = $('#landing-error');
+  el.textContent = message;
+  el.classList.remove('hidden');
+}
+function clearLandingError() {
+  $('#landing-error').classList.add('hidden');
+}
+
 $('#chat-form').addEventListener('submit', async (ev) => {
   ev.preventDefault();
   const input = $('#chat-input');
   const text = input.value.trim();
   if (!text || flow.busy) return;
+  clearLandingError();
   input.value = '';
   dispatch({ type: 'send', text });
   // docId 可为空：doc_generate 支持从零生成新文档（无需先打开文档）
   const r = await window.paiban.agentSend(flow.docId, text);
-  if (!r.ok) dispatch({ type: 'error', message: r.error || 'agent 发送失败' });
+  if (!r.ok) {
+    dispatch({ type: 'error', message: r.error || 'agent 发送失败' });
+    showLandingError(r.error || 'agent 发送失败');
+  }
 });
 
 $('#btn-abort').addEventListener('click', () => {
