@@ -6,7 +6,8 @@
 //      大纲文本与 outlineLevel、title 黑体、正文首行缩进、表格结构与表头 bold、页面/页码命令
 //   3. Workspace.generateDocument 入库为 v1 新工作文档
 //   4. 空白 docx 保真：产物再经 applyEdits([]) 纯 round-trip 不自检失败
-//   5. doc_generate 工具 execute（含坏参数走 isError）
+//   5. doc_generate / template_instantiate 工具 execute（含坏参数/缺模板走 isError）
+//   6. docgen 产物含 {{占位符}}：extractPlaceholders 提取 + instantiate 填值替换无残留
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -21,6 +22,7 @@ import { applyEdits } from '../src/docx-core/applyEdits.js';
 import { openDocx } from '../src/docx-core/docx.js';
 import { dumpOutline } from '../src/docx-core/outline.js';
 import { findChild, findChildren, getAttr, isElement, textOf } from '../src/docx-core/ooxml.js';
+import { extractPlaceholders } from '../src/templates/placeholders.js';
 import { Workspace } from '../src/server/workspace.js';
 import { createTools } from '../src/agent-core/tools.js';
 import type { Docx } from '../src/docx-core/docx.js';
@@ -228,5 +230,84 @@ test('doc_generate 工具：execute 生成入库；坏参数走 isError', async 
   // 空 markdown → isError
   const empty = await byName.doc_generate.execute('g3', { markdown: '   ', rulesetId: 'lab-report-default' });
   assert.equal(empty.isError, true);
+  cleanup();
+});
+
+test('docgen 产物含 {{占位符}}：extractPlaceholders 可提取；实例化填值后重解析已替换且无残留', () => {
+  const { ws, cleanup } = freshWorkspace();
+  const md = [
+    '# 投标文件',
+    '',
+    '{{项目名称}}',
+    '',
+    '项目编号：{{项目编号}}',
+    '',
+    '## 一、投标函',
+    '',
+    '我方愿意以人民币（大写）**{{投标总报价大写}}**（小写：{{投标总报价小写}}元）投标。',
+  ].join('\n');
+  const { docId } = ws.generateDocument(md, 'bid-default', '投标文件（占位符源）.docx');
+
+  // docgen 产物 → 占位符提取
+  const ph = extractPlaceholders(ws.getDocumentBuffer(docId));
+  const names = ph.map((p) => p.name).sort();
+  assert.deepEqual(names, ['投标总报价大写', '投标总报价小写', '项目名称', '项目编号'].sort());
+
+  // 上传为模板 → 实例化填值
+  const { templateId } = ws.uploadTemplate(ws.getDocumentBuffer(docId), '投标占位符模板');
+  const { docId: newDocId, version, replaced, errors } = ws.instantiateTemplate(templateId, {
+    项目名称: '智慧园区管理系统建设项目',
+    项目编号: 'ZB-2026-001',
+    投标总报价大写: '壹佰万元整',
+    投标总报价小写: '1,000,000.00',
+  }, '投标文件（智慧园区）.docx');
+  assert.equal(errors.length, 0);
+  assert.equal(version.id, 'v1');
+  assert.ok(replaced.length >= 4, `应替换 4 处占位符，实际 ${replaced.length}`);
+
+  // 重解析产物文本：含填入值、不含任何 {{占位符}}
+  const doc = openDocx(ws.getDocumentBuffer(newDocId));
+  const text = JSON.stringify(doc.parts.get('word/document.xml')!.tree!);
+  assert.ok(text.includes('智慧园区管理系统建设项目'), '项目名称已填入');
+  assert.ok(text.includes('壹佰万元整'), '大写金额已填入');
+  assert.ok(text.includes('ZB-2026-001'), '项目编号已填入');
+  assert.ok(!text.includes('{{'), '无占位符残留');
+  cleanup();
+});
+
+test('template_instantiate 工具：execute 填值实例化入库；模板不存在/坏参数走 isError', async () => {
+  const { ws, cleanup } = freshWorkspace();
+  const byName = Object.fromEntries(createTools(ws).map((t) => [t.name, t]));
+  assert.ok(byName.template_instantiate, '白名单含 template_instantiate');
+  assert.equal(byName.template_instantiate.executionMode, 'sequential');
+
+  // 先备一个带占位符的模板
+  const md = '# 投标文件\n\n{{项目名称}}\n\n项目编号：{{项目编号}}\n';
+  const { docId } = ws.generateDocument(md, 'bid-default', '源.docx');
+  const { templateId } = ws.uploadTemplate(ws.getDocumentBuffer(docId), '投标占位符模板');
+
+  const res = await byName.template_instantiate.execute('t1', {
+    templateId,
+    values: { 项目名称: '智慧园区', 项目编号: 'ZB-2026-001' },
+    name: '投标文件（智慧园区）.docx',
+  });
+  assert.equal(res.isError, false);
+  const data = JSON.parse(res.content[0].text);
+  assert.equal(data.version.id, 'v1');
+  assert.equal(data.name, '投标文件（智慧园区）.docx');
+  assert.ok(data.replaced.length >= 2, '占位符已被替换');
+  assert.equal(data.errors.length, 0);
+  assert.ok(ws.listDocuments().some((d) => d.docId === data.docId), '实例化产物已入库');
+
+  // 模板不存在 → isError + 友好错误
+  const missing = await byName.template_instantiate.execute('t2', { templateId: 'nope-1234', values: {} });
+  assert.equal(missing.isError, true);
+  assert.ok(JSON.parse(missing.content[0].text).error.includes('模板不存在'));
+
+  // 坏参数：缺 values / 空 templateId → isError
+  const noValues = await byName.template_instantiate.execute('t3', { templateId });
+  assert.equal(noValues.isError, true);
+  const noTpl = await byName.template_instantiate.execute('t4', { templateId: '  ', values: {} });
+  assert.equal(noTpl.isError, true);
   cleanup();
 });

@@ -4,7 +4,7 @@
 //   上传 → 编辑（自动快照 + 版本 note 摘要）→ 大纲 → 版本列表 → 回滚 → 下载 buffer
 //   模板：上传 → 实例化 → 规则集命令
 //   配置优先级：界面配置 > 环境变量 > 默认值（R4）
-//   agent 七工具直接 execute（不依赖 LLM）：doc_outline / doc_edit / doc_generate / template_read / ruleset_read / version_store / amount_words
+//   agent 八工具直接 execute（不依赖 LLM）：doc_outline / doc_edit / doc_generate / template_instantiate / template_read / ruleset_read / version_store / amount_words
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -120,7 +120,7 @@ test('agent 工具：doc_outline → doc_edit → version_store 全链路（无 
   const byName = Object.fromEntries(tools.map((t) => [t.name, t]));
 
   // 白名单与串行约束（spec：裁剪内置工具 + sequential）
-  assert.deepEqual(tools.map((t) => t.name), ['doc_outline', 'doc_edit', 'doc_generate', 'template_read', 'ruleset_read', 'version_store', 'amount_words']);
+  assert.deepEqual(tools.map((t) => t.name), ['doc_outline', 'doc_edit', 'doc_generate', 'template_instantiate', 'template_read', 'ruleset_read', 'version_store', 'amount_words']);
   for (const t of tools) assert.equal(t.executionMode, 'sequential');
 
   // doc_outline

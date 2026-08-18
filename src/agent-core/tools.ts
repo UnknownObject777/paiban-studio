@@ -4,6 +4,7 @@
 //   doc_outline    文档结构 dump（dump → batch 往返的 dump 端，D6）
 //   doc_edit       编辑命令批（走唯一 seam applyEdits + 自动快照）
 //   doc_generate   从零生成新文档（markdown + 内置规则集 → 规范排版 docx）
+//   template_instantiate  从模板实例化新文档（{{占位符}} 填值 → 新工作文档 v1）
 //   template_read  模板规则集 / 占位符 / 大纲读取
 //   ruleset_read   内置规则集（手写资产）列表 / 规则集命令读取（#29）
 //   version_store  版本列表 / 回滚
@@ -142,6 +143,46 @@ export function createTools(workspace: Workspace): AgentTool[] {
         }
         try {
           return jsonResult(workspace.generateDocument(params.markdown, params.rulesetId, params.name));
+        } catch (err) {
+          return jsonResult({ error: (err as Error).message }, true);
+        }
+      },
+    },
+    {
+      name: 'template_instantiate',
+      label: 'Template Instantiate',
+      description: '从模板实例化新文档：读取模板源 docx，把 values 中的值填入 {{占位符}}，生成新工作文档（v1）。用于"用某模板做一份、项目名是××"等基于模板产出文档的场景。',
+      promptSnippet: 'Instantiate a new document from a template, filling its placeholders',
+      promptGuidelines: [
+        '用户说"用某模板生成/套某模板做一份"时：先 template_read 读该模板的占位符清单，把用户给的信息填进 values（占位符名 → 值），再调 template_instantiate。',
+        '用户没提供的信息对应的占位符不要填（缺省保留），{{占位符}} 会原样留在文档里提示人工补充。',
+        '涉及「金额（大写）」占位符时，先调 amount_words 换算大写再填入。',
+      ],
+      parameters: {
+        type: 'object',
+        properties: {
+          templateId: { type: 'string', description: '模板 ID（先用 template_read 列出/读取）' },
+          values: { type: 'object', description: '占位符值表 {占位符名: 值}；只填用户提供的信息，未提供的占位符保留原样' },
+          name: { type: 'string', description: '生成文档的文件名（省略时默认"实例化-<templateId>.docx"）' },
+        },
+        required: ['templateId', 'values'],
+      },
+      executionMode: 'sequential',
+      async execute(_id: string, params: Record<string, any>) {
+        if (typeof params.templateId !== 'string' || !params.templateId.trim()) {
+          return jsonResult({ error: 'templateId 不能为空' }, true);
+        }
+        if (typeof params.values !== 'object' || params.values === null || Array.isArray(params.values)) {
+          return jsonResult({ error: 'values 必须是对象（占位符名 → 值）' }, true);
+        }
+        try {
+          const r = workspace.instantiateTemplate(params.templateId, params.values, params.name);
+          // instantiate 不返回 name：从文档列表按 docId 取回（兜底 docId）
+          const name = workspace.listDocuments().find((d) => d.docId === r.docId)?.name || r.docId;
+          return jsonResult({
+            docId: r.docId, version: r.version, name,
+            replaced: r.replaced, errors: r.errors,
+          }, r.errors.length > 0);
         } catch (err) {
           return jsonResult({ error: (err as Error).message }, true);
         }

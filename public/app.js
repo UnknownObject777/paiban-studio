@@ -153,8 +153,8 @@ window.paiban.onAgentEvent((event) => {
     refreshPreview();
     loadVersions();
   }
-  if (event.type === 'tool_end' && event.name === 'doc_generate' && !event.isError && event.details?.docId) {
-    // 生成成功：立即选中新文档并加载预览（让用户马上看到产物）
+  if (event.type === 'tool_end' && ['doc_generate', 'template_instantiate'].includes(event.name) && !event.isError && event.details?.docId) {
+    // 生成/实例化成功：立即选中新文档并加载预览（让用户马上看到产物）
     openGeneratedDocument(event.details);
   }
   if (event.type === 'done') {
@@ -232,7 +232,7 @@ async function openDocFlow(openResult) {
   refreshPreview();
 }
 
-// doc_generate 成功：刷新文档列表并选中新文档（openDocFlow 内部已刷新列表 + 加载预览）
+// doc_generate / template_instantiate 成功：刷新文档列表并选中新文档（openDocFlow 内部已刷新列表 + 加载预览）
 async function openGeneratedDocument(details) {
   const name = details.name ?? details.docId;
   await openDocFlow({ docId: details.docId, name, versionId: details.version?.id, note: `已生成《${name}》` });

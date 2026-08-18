@@ -1,6 +1,7 @@
 // scripts/seed-demo-docs.mjs — 演示/验收用：向工作台数据目录预置三份生成示例文档
 // （投标文件 / 实验报告 / 境外汇款申请书），走 docgen 生成链路（与 doc_generate 工具同路径）；
-// 并把三份产物 buffer 各 uploadTemplate 一份为演示模板（"模板"栏也有演示资产）。
+// 并把三份产物 buffer 各 uploadTemplate 一份为演示模板（"模板"栏也有演示资产）；
+// 另追加一份带 {{占位符}} 的投标文件模板（供 template_read 提取 / template_instantiate 填值演示）。
 //
 // 幂等说明：重复执行会重复创建演示文档；模板按名称查重、已存在则跳过。
 //
@@ -174,10 +175,74 @@ const FX_MD = `# 境外汇款申请书
 申请人签章：×××　　　　银行经办：×××
 `;
 
+// 占位符演示模板（投标文件）：封面/投标函用 {{占位符}}（名称支持中文），
+// 商务/技术/报价章节保留 ××× 引导文案。供 template_read 提取 + template_instantiate 填值演示。
+const BID_PLACEHOLDER_MD = `# 投标文件
+
+{{项目名称}}
+
+项目编号：{{项目编号}}
+
+## 一、投标函
+
+致：{{招标人名称}}
+
+我方已仔细研究了{{项目名称}}（项目编号：{{项目编号}}）招标文件的全部内容，愿意以人民币（大写）**{{投标总报价大写}}**（小写：{{投标总报价小写}}元）的投标总报价，按合同约定实施和完成本项目，并承担任何质量缺陷保修责任。
+
+我方承诺投标有效期为自开标之日起 {{投标有效期}} 个日历日。
+
+## 二、法定代表人身份证明及授权委托书
+
+投标人名称：{{投标人名称}}
+
+法定代表人：{{法定代表人}}，职务：总经理
+
+兹授权 ××× 为我方委托代理人，代表我方参加本项目的投标活动，其权限为：签署、澄清、补正投标文件，参加开标、评标，签订合同及处理与之有关的一切事务。
+
+## 三、商务部分
+
+### （一）企业资质
+
+| 资质名称 | 证书编号 | 有效期至 |
+| --- | --- | --- |
+| 营业执照 | ××× | 长期 |
+| ISO9001 质量管理体系认证 | ××× | 2027-06-30 |
+
+### （二）类似项目业绩
+
+近三年完成同类项目 × 个，合同金额累计 ××× 万元，均通过验收并获得业主好评。
+
+## 四、技术部分
+
+### （一）项目理解
+
+本项目拟建设覆盖园区安防、能耗、通行、资产管理的一体化智慧管理平台，实现数据统一汇聚与业务协同。
+
+### （二）总体技术方案
+
+采用微服务架构，前端 B/S 模式，支持国产化软硬件环境部署，预留与上级监管平台的数据接口。
+
+## 五、报价部分
+
+| 序号 | 分项名称 | 金额（万元） |
+| --- | --- | --- |
+| 1 | 软件开发费 | ××× |
+| 2 | 硬件设备费 | ××× |
+| 3 | 实施服务费 | ××× |
+| 合计 | | ××× |
+
+## 六、资格审查资料
+
+附件：营业执照副本复印件、资质证书复印件、财务报表。
+`;
+
 const jobs = [
   { markdown: BID_MD, rulesetId: 'bid-default', name: '投标文件（演示）.docx', templateName: '投标文件模板（演示）' },
   { markdown: LAB_MD, rulesetId: 'lab-report-default', name: '实验报告（演示）.docx', templateName: '实验报告模板（演示）' },
   { markdown: FX_MD, rulesetId: 'fx-form-default', name: '境外汇款申请书（演示）.docx', templateName: '境外汇款申请书模板（演示）' },
+  // 特殊条目：带 {{占位符}} 的投标文件模板 —— 封面/投标函用占位符，商务/技术/报价章节保留 ××× 引导文案。
+  // 产物 docx 仅作为模板源，主要演示 template_read（提取占位符）+ template_instantiate（填值实例化）。
+  { markdown: BID_PLACEHOLDER_MD, rulesetId: 'bid-default', name: '投标文件占位符模板（演示）.docx', templateName: '投标文件占位符模板（演示）' },
 ];
 
 const ws = new Workspace(workspaceDir);
@@ -188,7 +253,7 @@ for (const job of jobs) {
   console.log(`✔ ${name}  docId=${docId}  ${version.id}（规则集 ${job.rulesetId}）`);
 }
 
-// 三份产物 buffer 各上传为演示模板（复用上面生成结果，不重复生成文档）。
+// 各产物 buffer 上传为演示模板（复用上面生成结果，不重复生成文档）。
 // 幂等：按模板名查重，已存在则跳过。
 const existingTpl = new Set(ws.listTemplates().map((t) => t.name));
 for (let i = 0; i < jobs.length; i++) {
@@ -197,7 +262,10 @@ for (let i = 0; i < jobs.length; i++) {
     console.log(`↷ 模板《${tplName}》已存在，跳过`);
     continue;
   }
-  const { templateId } = ws.uploadTemplate(ws.getDocumentBuffer(generated[i].docId), tplName);
-  console.log(`✔ 模板《${tplName}》  templateId=${templateId}（复用 ${generated[i].name} 产物）`);
+  const up = ws.uploadTemplate(ws.getDocumentBuffer(generated[i].docId), tplName);
+  console.log(`✔ 模板《${tplName}》  templateId=${up.templateId}（复用 ${generated[i].name} 产物）`);
+  if (up.placeholders.length) {
+    console.log(`  占位符 ${up.placeholders.length} 个：${up.placeholders.map((p) => `{{${p.name}}}`).join(' ')}`);
+  }
 }
 console.log(`数据目录：${workspaceDir}`);

@@ -134,7 +134,13 @@ export class TemplateStore {
 
   /** 模板源 docx buffer。 */
   getBuffer(templateId: string): Buffer {
-    const meta = JSON.parse(readFileSync(join(this._dir(templateId), 'meta.json'), 'utf8')) as TemplateMeta;
+    const dir = this._dir(templateId);
+    if (!existsSync(dir)) {
+      const err = new Error(`模板不存在: ${templateId}`) as Error & { code?: string };
+      err.code = 'TEMPLATE_NOT_FOUND';
+      throw err;
+    }
+    const meta = JSON.parse(readFileSync(join(dir, 'meta.json'), 'utf8')) as TemplateMeta;
     return this.store.get(meta.hash);
   }
 
