@@ -50,7 +50,7 @@ MVP 规格已确认（2026-08-02，`docs/mvp-spec.md`），进度边界如下（
 | 预览内核替换为 OnlyOffice 静态 SDK | ✅ 只读渲染已可用 | 完整编辑器渲染路径实测通过（2026-08-18，生成标书 7 页即时渲染）；`?x2t-only` 隔离诊断降级为调试开关；超大文档 wasm 内存边界仍待回归观察 |
 | 真实 LLM 链路测试 | ⏳ 待做 | `PAIBAN_E2E=1` + 模型凭证启用（默认跳过）；mock LLM 全链路已在默认套件覆盖 |
 | Word/WPS 双端人工验证 | ⏳ 待做 | 发布前人工打开确认版式一致（spec 首要风险收口） |
-| electron-builder 打包分发 | ⏳ 待做 | 三平台（Win NSIS / macOS DMG / Kylin AppImage） |
+| electron-builder 打包分发 | ✅ Win 已出包 | `out/排版工作台 Setup 0.1.0.exe`（NSIS，约 740MB，含 OnlyOffice 预览资产）；免安装版实测启动正常；macOS/Linux 需在对应平台构建 |
 
 ### 下一期（Roadmap）
 
@@ -146,6 +146,14 @@ npm run dist       # electron-builder，输出到 out/
 - electron-builder 产物带平台属性，**需在目标平台构建**（或用 CI 矩阵三平台分别出包）。
 - 信创（Kylin）走 Linux 目标；产物为 AppImage，内网环境可离线分发。
 - 版本号 / 图标 / 签名未收口，属 MVP 后置项。
+- 安装包含 OnlyOffice 预览资产（约 740MB）；精简分发可后续把 `public/packages/` 改为首启拉取。
+- 国内网络构建时 electron-builder 需从 GitHub 下载 electron/nsis 等二进制，超时则用 npmmirror 镜像：
+
+```bash
+ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ \
+ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/ \
+npm run dist
+```
 
 ### 真实 LLM 链路测试
 
