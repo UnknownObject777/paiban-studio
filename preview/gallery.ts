@@ -5,7 +5,8 @@
 import { COMPONENTS, PAGE_ID } from '../src/ruleset/components.js';
 import { validateRuleset } from '../src/ruleset/schema.js';
 
-const RULESET_DIR = '../templates/rulesets/gongwen-default';
+// 内置规则集清单（手写资产，与 templates/rulesets/ 目录一一对应；新增规则集在此登记）
+const RULESET_IDS = ['gongwen-default', 'lab-report-default', 'bid-default', 'fx-form-default'] as const;
 
 const PT_TO_PX = 96 / 72; // 1pt = 1.333px
 const CM_TO_PX = 96 / 2.54;
@@ -33,6 +34,9 @@ const STYLE_LABELS: Record<string, string> = {
   outlineLevel: '大纲级别',
   smartAlign: '智能对齐',
   headerBold: '表头加粗',
+  headerFontEastAsia: '表头中文字体',
+  borders: '表格边框',
+  widthPct: '表格宽度(%)',
 };
 
 function ptToPx(ptValue: number): string {
@@ -281,17 +285,21 @@ function switchView(view: 'gallery' | 'page'): void {
   }
 }
 
-async function main(): Promise<void> {
+let currentStyles: any = null;
+
+async function loadRuleset(rulesetId: string): Promise<void> {
   const status = document.getElementById('status')!;
   try {
+    const base = `../templates/rulesets/${rulesetId}`;
     const [recognizers, styles] = await Promise.all([
-      fetchJson(`${RULESET_DIR}/recognizers.json`),
-      fetchJson(`${RULESET_DIR}/styles.json`),
+      fetchJson(`${base}/recognizers.json`),
+      fetchJson(`${base}/styles.json`),
     ]);
     const errors = validateRuleset(recognizers, styles);
     if (errors.length > 0) {
       throw new Error(`规则集校验未通过：\n- ${errors.join('\n- ')}`);
     }
+    currentStyles = styles;
 
     document.getElementById('ruleset-name')!.textContent =
       `${recognizers.ruleset} · v${recognizers.version}`;
@@ -299,21 +307,41 @@ async function main(): Promise<void> {
     setTimeout(() => status.classList.add('is-hidden'), 2400);
 
     renderGallery(recognizers, styles);
-    renderWireframe(styles, 'odd');
+    const parity = (document.querySelector('.page-toolbar .pill.is-active') as HTMLElement | null)?.dataset.parity ?? 'odd';
+    renderWireframe(styles, parity as 'odd' | 'even');
 
-    document.querySelectorAll('.tab').forEach((tab) =>
-      tab.addEventListener('click', () => switchView((tab as HTMLElement).dataset.view as 'gallery' | 'page')),
-    );
-    document.querySelectorAll('.pill').forEach((pill) =>
-      pill.addEventListener('click', () => {
-        document.querySelectorAll('.pill').forEach((p) => p.classList.toggle('is-active', p === pill));
-        renderWireframe(styles, (pill as HTMLElement).dataset.parity as 'odd' | 'even');
-      }),
+    document.querySelectorAll('#ruleset-pills .pill').forEach((pill) =>
+      pill.classList.toggle('is-active', (pill as HTMLElement).dataset.ruleset === rulesetId),
     );
   } catch (err) {
     status.classList.add('status--error');
     status.textContent = `加载失败：${(err as Error).message}\n\n请先用 npm run preview 启动本地服务（fetch 不支持 file:// 直开）。`;
   }
+}
+
+async function main(): Promise<void> {
+  const pills = document.getElementById('ruleset-pills')!;
+  for (const id of RULESET_IDS) {
+    const btn = document.createElement('button');
+    btn.className = 'pill';
+    btn.type = 'button';
+    btn.dataset.ruleset = id;
+    btn.textContent = id;
+    btn.addEventListener('click', () => void loadRuleset(id));
+    pills.appendChild(btn);
+  }
+
+  document.querySelectorAll('.tab').forEach((tab) =>
+    tab.addEventListener('click', () => switchView((tab as HTMLElement).dataset.view as 'gallery' | 'page')),
+  );
+  document.querySelectorAll('.page-toolbar .pill').forEach((pill) =>
+    pill.addEventListener('click', () => {
+      document.querySelectorAll('.page-toolbar .pill').forEach((p) => p.classList.toggle('is-active', p === pill));
+      renderWireframe(currentStyles, (pill as HTMLElement).dataset.parity as 'odd' | 'even');
+    }),
+  );
+
+  await loadRuleset(RULESET_IDS[0]);
 }
 
 main();

@@ -1,0 +1,99 @@
+{
+  "ruleset": "bid-default",
+  "version": 1,
+  "description": "标书/投标文件默认规则集（手写资产）· 识别规则（component id → match 规则）。面向政企投标文件：题名/项目编号行、第X章与一、级大章、报价表/偏离表密集表格",
+  "components": {
+    "title": {
+      "match": [
+        {
+          "type": "position",
+          "where": "documentStart",
+          "params": { "maxParagraphs": 5 },
+          "notes": "文档开头若干段落内寻找；标书封面首行大字通常为题名（如「投标文件」「技术标」）"
+        },
+        {
+          "type": "regex",
+          "pattern": "投标(?:文件|书)|标书",
+          "notes": "含「投标文件」「投标书」「标书」字样的段落；position 规则优先，本条为文档化补充"
+        }
+      ]
+    },
+    "subtitle": {
+      "match": [
+        {
+          "type": "position",
+          "where": "afterComponent",
+          "params": { "component": "title", "within": 2 },
+          "notes": "题目下方；标书常为项目编号 / 投标人名称 / 日期行"
+        }
+      ]
+    },
+    "heading1": {
+      "match": [
+        {
+          "type": "regex",
+          "pattern": "^(?:第[一二三四五六七八九十百\\d]+(?:章|节|部分)|[一二三四五六七八九十]+、)",
+          "notes": "一级标题两类：①第X章/第X节/第X部分（如「第一章 投标函」）；②一、二、三、 等中文编号式（如「一、商务标」）"
+        }
+      ]
+    },
+    "heading2": {
+      "match": [
+        {
+          "type": "regex",
+          "pattern": "^（[一二三四五六七八九十]+）",
+          "notes": "（一）（二）等小节编号"
+        }
+      ]
+    },
+    "heading3": {
+      "match": [
+        {
+          "type": "regex",
+          "pattern": "^\\d+[.、]",
+          "notes": "1. 2. 1、 等；X.Y 形式已被 heading2 先命中"
+        }
+      ]
+    },
+    "heading4": {
+      "match": [
+        {
+          "type": "regex",
+          "pattern": "^[（(]\\d+[）)]",
+          "notes": "（1）(1) 等"
+        }
+      ]
+    },
+    "body": {
+      "fallback": true,
+      "notes": "未被以上规则命中的普通段落一律视为正文"
+    },
+    "caption": {
+      "match": [
+        {
+          "type": "regex",
+          "pattern": "^[表图]\\s*\\d+",
+          "notes": "表1 图2 等起始的段落；标书报价/偏离表、示意图较多"
+        }
+      ]
+    },
+    "table": {
+      "match": [
+        {
+          "type": "heuristic",
+          "kind": "isTableElement",
+          "notes": "OOXML 表格元素本身，无需文本规则；报价表/偏离表主要载体"
+        }
+      ]
+    },
+    "attachment": {
+      "match": [
+        {
+          "type": "regex",
+          "pattern": "^(?:附件|附录)",
+          "notes": "附件 / 附件A / 附录 等形式；标书常用附件放资质证书、承诺函等"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,135 @@
+{
+  "ruleset": "bid-default",
+  "version": 1,
+  "description": "标书/投标文件默认规则集（手写资产）· 样式与页面（component id → style + page）。字号/行距单位 pt，尺寸单位 cm。取政企标书通行排版：题名黑体一号加粗居中、大章黑体三号另起页、正文宋体小四 28 磅行距、报价表表头黑体加粗数值列右对齐、A4 页边距上2.5/下2.5/左3.0/右2.5cm 页脚居中页码",
+  "components": {
+    "title": {
+      "fontEastAsia": "黑体",
+      "fontAscii": "Times New Roman",
+      "sizePt": 26,
+      "bold": true,
+      "align": "center",
+      "firstLineIndentChars": 0,
+      "lineSpacingPt": 33,
+      "spaceAfterPt": 12,
+      "notes": "标书题名（如「投标文件」）：黑体一号（26pt）加粗居中，段后 12 磅；政企标书封面题名通行字号"
+    },
+    "subtitle": {
+      "fontEastAsia": "楷体",
+      "fontAscii": "Times New Roman",
+      "sizePt": 16,
+      "bold": false,
+      "align": "center",
+      "firstLineIndentChars": 0,
+      "lineSpacingPt": 28,
+      "notes": "项目编号 / 投标人名称 / 日期行：楷体三号（16pt）居中"
+    },
+    "heading1": {
+      "fontEastAsia": "黑体",
+      "fontAscii": "Times New Roman",
+      "sizePt": 16,
+      "bold": true,
+      "align": "left",
+      "firstLineIndentChars": 0,
+      "lineSpacingPt": 28,
+      "spaceBeforePt": 6,
+      "spaceAfterPt": 6,
+      "pageBreakBefore": true,
+      "outlineLevel": 1,
+      "notes": "一级标题（第一章/一、 级，如「一、投标函」）：黑体三号（16pt）加粗顶格，段前分页另起一页——标书大章通行做法"
+    },
+    "heading2": {
+      "fontEastAsia": "黑体",
+      "fontAscii": "Times New Roman",
+      "sizePt": 14,
+      "bold": true,
+      "align": "left",
+      "firstLineIndentChars": 0,
+      "lineSpacingPt": 28,
+      "spaceBeforePt": 3,
+      "spaceAfterPt": 3,
+      "outlineLevel": 2,
+      "notes": "二级标题（（一）级）：黑体四号（14pt）加粗顶格"
+    },
+    "heading3": {
+      "fontEastAsia": "黑体",
+      "fontAscii": "Times New Roman",
+      "sizePt": 12,
+      "bold": true,
+      "align": "left",
+      "firstLineIndentChars": 0,
+      "lineSpacingPt": 28,
+      "outlineLevel": 3,
+      "notes": "三级标题（1. 级）：黑体小四（12pt）加粗顶格"
+    },
+    "heading4": {
+      "fontEastAsia": "宋体",
+      "fontAscii": "Times New Roman",
+      "sizePt": 12,
+      "bold": true,
+      "align": "left",
+      "firstLineIndentChars": 0,
+      "lineSpacingPt": 28,
+      "outlineLevel": 4,
+      "notes": "四级标题（（1）级）：宋体小四加粗顶格，与正文区分仅靠字重"
+    },
+    "body": {
+      "fontEastAsia": "宋体",
+      "fontAscii": "Times New Roman",
+      "sizePt": 12,
+      "bold": false,
+      "align": "justify",
+      "firstLineIndentChars": 2,
+      "lineSpacingPt": 28,
+      "notes": "正文：宋体小四（12pt）两端对齐，首行缩进 2 字符，行距固定 28 磅（标书行距通行值，同公文）"
+    },
+    "caption": {
+      "fontEastAsia": "黑体",
+      "fontAscii": "Times New Roman",
+      "sizePt": 10.5,
+      "bold": false,
+      "align": "center",
+      "firstLineIndentChars": 0,
+      "lineSpacingPt": 20,
+      "spaceBeforePt": 3,
+      "spaceAfterPt": 3,
+      "notes": "图表标题：黑体五号（10.5pt）居中"
+    },
+    "table": {
+      "fontEastAsia": "宋体",
+      "fontAscii": "Times New Roman",
+      "sizePt": 10.5,
+      "align": "center",
+      "headerFontEastAsia": "黑体",
+      "headerBold": true,
+      "lineSpacingPt": 20,
+      "smartAlign": true,
+      "borders": true,
+      "notes": "报价表/偏离表：表体宋体五号（10.5pt）表头黑体加粗居中，全边框；smartAlign 开启——数值列右对齐、序号/短文本居中，适合报价金额列；表内行距固定 20 磅压密"
+    },
+    "attachment": {
+      "fontEastAsia": "黑体",
+      "fontAscii": "Times New Roman",
+      "sizePt": 14,
+      "bold": true,
+      "align": "left",
+      "firstLineIndentChars": 0,
+      "lineSpacingPt": 28,
+      "pageBreakBefore": true,
+      "notes": "附件/附录标识：黑体四号（14pt）加粗，段前分页"
+    }
+  },
+  "page": {
+    "paper": "A4",
+    "margins": { "topCm": 2.5, "bottomCm": 2.5, "leftCm": 3.0, "rightCm": 2.5 },
+    "footerDistanceCm": 1.5,
+    "pageNumber": {
+      "oddEven": false,
+      "oddAlign": "center",
+      "evenAlign": "center",
+      "fontEastAsia": "宋体",
+      "sizePt": 10.5
+    },
+    "notes": "A4；页边距取标书常用上2.5/下2.5/左3.0/右2.5cm（装订侧留 3.0 便于左侧装订，比 Word 常规 2.54/3.17 略窄）；页脚距 1.5cm，页码页脚居中宋体五号，单面提交不分奇偶"
+  }
+}

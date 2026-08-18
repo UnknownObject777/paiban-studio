@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 
 import { validateRuleset } from '../src/ruleset/schema.js';
 import { loadRuleset } from '../src/ruleset/load.js';
@@ -46,6 +46,22 @@ test('内置实验报告默认规则集通过校验且组件键集一致', () =>
   assert.deepEqual(Object.keys(recognizers.components as Record<string, unknown>).sort(), [...COMPONENT_IDS].sort());
   assert.deepEqual(Object.keys(styles.components as Record<string, unknown>).sort(), [...COMPONENT_IDS].sort());
   assert.ok(styles[PAGE_ID], 'styles.json 必须含 page 节');
+});
+
+test('全部内置规则集（templates/rulesets/ 下每个目录）通过校验且组件键集一致', () => {
+  const dirs = readdirSync(path.join(REPO_ROOT, 'templates', 'rulesets'), { withFileTypes: true })
+    .filter((e) => e.isDirectory())
+    .map((e) => e.name)
+    .sort();
+  assert.ok(dirs.length >= 4, `内置规则集目录应 ≥4 个，实际：${dirs.join(', ')}`);
+  for (const name of dirs) {
+    const { recognizers, styles } = loadRuleset(path.join(REPO_ROOT, 'templates', 'rulesets', name));
+    assert.deepEqual(validateRuleset(recognizers, styles), [], `${name} 校验失败`);
+    assert.deepEqual(Object.keys(recognizers.components as Record<string, unknown>).sort(), [...COMPONENT_IDS].sort(), `${name} recognizers 组件键集`);
+    assert.deepEqual(Object.keys(styles.components as Record<string, unknown>).sort(), [...COMPONENT_IDS].sort(), `${name} styles 组件键集`);
+    assert.ok(styles[PAGE_ID], `${name} styles.json 必须含 page 节`);
+    assert.equal(recognizers[PAGE_ID], undefined, `${name} recognizers.json 不得含 page 节`);
+  }
 });
 
 test('loadRuleset 对缺失文件给出可读错误', () => {

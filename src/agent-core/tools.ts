@@ -119,7 +119,7 @@ export function createTools(workspace: Workspace): AgentTool[] {
       promptSnippet: 'Generate a new Word document from markdown with a builtin ruleset',
       promptGuidelines: [
         'doc_generate 用于从零生成新文档；修改/排版已有文档用 doc_edit。',
-        'rulesetId 取值先用 ruleset_read 列出内置规则集（如 lab-report-default / gongwen-default）。',
+        'rulesetId 取值先用 ruleset_read 列出内置规则集（如 lab-report-default / gongwen-default / bid-default / fx-form-default）。',
         'markdown 约定：第一个 # 是文档题目，## 是章节标题；报价表/申报字段表用 GFM 表格（| 表头 | ... | 加分隔行 | --- |）；支持 **粗体** 等行内格式。',
         '生成后可用 doc_outline 查看产物结构，再按需用 doc_edit 微调。',
       ],
@@ -127,7 +127,7 @@ export function createTools(workspace: Workspace): AgentTool[] {
         type: 'object',
         properties: {
           markdown: { type: 'string', description: 'markdown 文本：第一个 # 为文档题目、## 为章节标题、GFM 表格写报价/字段表，支持 **粗体**/*斜体*/`代码` 行内格式' },
-          rulesetId: { type: 'string', description: '内置排版规则集 ID（先用 ruleset_read 列出，如 lab-report-default / gongwen-default）' },
+          rulesetId: { type: 'string', description: '内置排版规则集 ID（先用 ruleset_read 列出，如 lab-report-default / gongwen-default / bid-default / fx-form-default）' },
           name: { type: 'string', description: '生成文档的文件名（省略时默认"生成文档.docx"）' },
         },
         required: ['markdown', 'rulesetId'],
@@ -180,13 +180,13 @@ export function createTools(workspace: Workspace): AgentTool[] {
       description: '内置排版规则集（手写资产，质量保底）：不传 rulesetId 时列出全部内置规则集（id + 描述）；传入时返回该规则集可直接用于 doc_edit 的规则集命令（rulesetCommands）。',
       promptSnippet: 'Read builtin formatting rulesets (hand-written, preferred over inferred ones)',
       promptGuidelines: [
-        '用户说"按实验报告排版"→ ruleset_read 取 lab-report-default；"按公文排版"→ gongwen-default。优先用内置规则集，质量比上传模板反推的更可靠。',
+        '用户说"按实验报告排版"→ ruleset_read 取 lab-report-default；"按公文排版"→ gongwen-default；"按标书排版"→ bid-default；"按外汇申报表单排版"→ fx-form-default。优先用内置规则集，质量比上传模板反推的更可靠。',
         '用法：ruleset_read 取 rulesetCommands，原样传给 doc_edit 的 commands。',
       ],
       parameters: {
         type: 'object',
         properties: {
-          rulesetId: { type: 'string', description: '内置规则集 ID（如 lab-report-default / gongwen-default）；省略则列出全部' },
+          rulesetId: { type: 'string', description: '内置规则集 ID（如 lab-report-default / gongwen-default / bid-default / fx-form-default）；省略则列出全部' },
         },
       },
       executionMode: 'sequential',

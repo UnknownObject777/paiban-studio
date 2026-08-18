@@ -14,7 +14,7 @@ paiban-studio 换了一条路——**LLM 不碰文件，只产出声明式排版
 
 | 痛点 | 本项目的解法 |
 |---|---|
-| 样式靠编、结果丑 | 排版规则沉淀为**规则集资产**（内置公文/实验报告规则集 + 上传模板反推），黑体三号居中、仿宋四号、行距 28 磅都有据可依 |
+| 样式靠编、结果丑 | 排版规则沉淀为**规则集资产**（内置公文/实验报告/标书/外汇申报表单规则集 + 上传模板反推），黑体三号居中、仿宋四号、行距 28 磅都有据可依 |
 | 全文进上下文费 token | 发送前只注入**文档结构摘要**（段落路径 + 前 40 段预览），模型按路径精准寻址，不读全文 |
 | 脚本试错不可控 | 命令经唯一 seam `applyEdits(buffer, commands)` 落 OOXML，**round-trip 保真**（19 份真实 Word/WPS 样本逐部件无损验证）+ 生成后自检 |
 | 改坏没回头路 | 每次成功编辑**自动存版本**，随时预览/回滚/下载任意历史版本 |
@@ -207,7 +207,7 @@ src/                      # TypeScript 源码（tsc 编译到 dist/）
 └── ui/conversation-flow.ts # 对话流状态机（两相视图 / 瀑布流条目 / 进度推导，纯函数可测）
 dist/                     # tsc 构建产物（主进程/preview 从 dist 加载；.gitignore 排除）
 public/                   # 无框架两相前端（HTML/CSS/JS ES module，状态机经 dist 编译产物 import）
-templates/rulesets/       # 内置规则集（gongwen-default / lab-report-default）
+templates/rulesets/       # 内置规则集（gongwen-default / lab-report-default / bid-default / fx-form-default）
 test/                     # node:test 用例（TS 源码）+ fixtures/ 19 份真实样本
 ```
 

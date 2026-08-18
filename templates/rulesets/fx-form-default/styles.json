@@ -1,0 +1,131 @@
+{
+  "ruleset": "fx-form-default",
+  "version": 1,
+  "description": "外汇单/涉外收付款申报表单默认规则集（手写资产）· 样式与页面（component id → style + page）。字号/行距单位 pt，尺寸单位 cm。参考国家外汇管理局申报单样式：单名黑体二号居中、栏目黑体四号顶格、申报字段表全边框宋体五号、说明文字顶格 24 磅行距、A4 收窄页边距 2.0cm",
+  "components": {
+    "title": {
+      "fontEastAsia": "黑体",
+      "fontAscii": "Times New Roman",
+      "sizePt": 22,
+      "bold": true,
+      "align": "center",
+      "firstLineIndentChars": 0,
+      "lineSpacingPt": 33,
+      "spaceAfterPt": 6,
+      "notes": "单名（如「境外汇款申请书」「涉外收入申报单」）：黑体二号（22pt）加粗居中"
+    },
+    "subtitle": {
+      "fontEastAsia": "宋体",
+      "fontAscii": "Times New Roman",
+      "sizePt": 12,
+      "bold": false,
+      "align": "center",
+      "firstLineIndentChars": 0,
+      "lineSpacingPt": 24,
+      "notes": "申请书编号 / 银行编制说明行：宋体小四（12pt）居中（实务中亦有右对齐排法，可按需改 align）"
+    },
+    "heading1": {
+      "fontEastAsia": "黑体",
+      "fontAscii": "Times New Roman",
+      "sizePt": 14,
+      "bold": true,
+      "align": "left",
+      "firstLineIndentChars": 0,
+      "lineSpacingPt": 24,
+      "spaceBeforePt": 6,
+      "spaceAfterPt": 3,
+      "outlineLevel": 1,
+      "notes": "栏目标题（申请人信息/交易信息等）：黑体四号（14pt）加粗顶格，不分页（表单各栏目连续排布）"
+    },
+    "heading2": {
+      "fontEastAsia": "黑体",
+      "fontAscii": "Times New Roman",
+      "sizePt": 12,
+      "bold": true,
+      "align": "left",
+      "firstLineIndentChars": 0,
+      "lineSpacingPt": 24,
+      "outlineLevel": 2,
+      "notes": "二级栏目：黑体小四（12pt）加粗顶格（表单式文档少用，给出默认）"
+    },
+    "heading3": {
+      "fontEastAsia": "黑体",
+      "fontAscii": "Times New Roman",
+      "sizePt": 12,
+      "bold": true,
+      "align": "left",
+      "firstLineIndentChars": 0,
+      "lineSpacingPt": 24,
+      "outlineLevel": 3,
+      "notes": "三级标题：黑体小四（12pt）加粗顶格"
+    },
+    "heading4": {
+      "fontEastAsia": "宋体",
+      "fontAscii": "Times New Roman",
+      "sizePt": 12,
+      "bold": true,
+      "align": "left",
+      "firstLineIndentChars": 0,
+      "lineSpacingPt": 24,
+      "outlineLevel": 4,
+      "notes": "四级标题：宋体小四加粗顶格"
+    },
+    "body": {
+      "fontEastAsia": "宋体",
+      "fontAscii": "Times New Roman",
+      "sizePt": 12,
+      "bold": false,
+      "align": "justify",
+      "firstLineIndentChars": 0,
+      "lineSpacingPt": 24,
+      "notes": "表单说明文字：宋体小四（12pt），行距固定 24 磅，首行缩进 0（表单式文档说明文字顶格，不缩进）"
+    },
+    "caption": {
+      "fontEastAsia": "宋体",
+      "fontAscii": "Times New Roman",
+      "sizePt": 10.5,
+      "bold": false,
+      "align": "center",
+      "firstLineIndentChars": 0,
+      "lineSpacingPt": 20,
+      "spaceBeforePt": 3,
+      "spaceAfterPt": 3,
+      "notes": "图表标题：宋体五号（10.5pt）居中"
+    },
+    "table": {
+      "fontEastAsia": "宋体",
+      "fontAscii": "Times New Roman",
+      "sizePt": 10.5,
+      "align": "left",
+      "headerFontEastAsia": "黑体",
+      "headerBold": true,
+      "lineSpacingPt": 20,
+      "smartAlign": false,
+      "borders": true,
+      "notes": "申报字段表（核心组件）：表体宋体五号（10.5pt）表头黑体加粗，全边框，字段名单元格左对齐；smartAlign 关闭——字段表按手工排布原样呈现，不做数值列智能对齐"
+    },
+    "attachment": {
+      "fontEastAsia": "黑体",
+      "fontAscii": "Times New Roman",
+      "sizePt": 12,
+      "bold": true,
+      "align": "left",
+      "firstLineIndentChars": 0,
+      "lineSpacingPt": 24,
+      "notes": "附言/附件标识：黑体小四（12pt）加粗顶格"
+    }
+  },
+  "page": {
+    "paper": "A4",
+    "margins": { "topCm": 2.0, "bottomCm": 2.0, "leftCm": 2.0, "rightCm": 2.0 },
+    "footerDistanceCm": 1.5,
+    "pageNumber": {
+      "oddEven": false,
+      "oddAlign": "center",
+      "evenAlign": "center",
+      "fontEastAsia": "宋体",
+      "sizePt": 10.5
+    },
+    "notes": "A4；表单式文档密度高，页边距收窄为上下左右 2.0cm；页脚距 1.5cm，页码页脚居中宋体五号，单面提交不分奇偶"
+  }
+}

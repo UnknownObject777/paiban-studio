@@ -160,10 +160,13 @@ test('agent 工具：doc_outline → doc_edit → version_store 全链路（无 
 test('内置规则集：列出 → 读出 lab-report-default 命令 → ruleset_read 工具（#29）', async () => {
   const { ws, cleanup } = freshWorkspace();
 
-  // 列表：两个手写规则集都在，带描述
+  // 列表：全部手写规则集都在，带描述
   const list = ws.listBuiltinRulesets();
   const ids = list.map((r) => r.id);
-  assert.ok(ids.includes('gongwen-default') && ids.includes('lab-report-default'), `内置规则集: ${ids}`);
+  assert.ok(
+    ['gongwen-default', 'lab-report-default', 'bid-default', 'fx-form-default'].every((id) => ids.includes(id)),
+    `内置规则集: ${ids}`,
+  );
   assert.ok(list.find((r) => r.id === 'lab-report-default')!.description.length > 0);
 
   // 按 id 读出 rulesetCommands：normalize 含 title/heading1/body/caption/table 组件 + page 页面设置命令

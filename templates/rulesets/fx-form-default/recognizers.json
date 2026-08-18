@@ -1,0 +1,104 @@
+{
+  "ruleset": "fx-form-default",
+  "version": 1,
+  "description": "外汇单/涉外收付款申报表单默认规则集（手写资产）· 识别规则（component id → match 规则）。面向境外汇款申请书、涉外收入/支出申报单等表单式文档：申报号码、汇款人/收款人、交易编码、交易附言、付款方式等字段表格为主",
+  "components": {
+    "title": {
+      "match": [
+        {
+          "type": "position",
+          "where": "documentStart",
+          "params": { "maxParagraphs": 5 },
+          "notes": "文档开头若干段落内寻找；表单首行大字通常为单名（如「境外汇款申请书」「涉外收入申报单」）"
+        },
+        {
+          "type": "regex",
+          "pattern": "境外汇款申请书|涉外(?:收入|支出|付款)申报单|汇款申请书|跨境支付(?:申请|说明)",
+          "notes": "国家外汇管理局申报单常见单名；position 规则优先，本条为文档化补充"
+        }
+      ]
+    },
+    "subtitle": {
+      "match": [
+        {
+          "type": "position",
+          "where": "afterComponent",
+          "params": { "component": "title", "within": 2 },
+          "notes": "题目下方；表单常为申请书编号 / 银行编制说明行"
+        }
+      ]
+    },
+    "heading1": {
+      "match": [
+        {
+          "type": "regex",
+          "pattern": "^(?:申请人|汇款人|收款人|付款人|交易|申报|付款|银行|购汇|结汇|受益人)(?:信息|情况|要素|资料)",
+          "notes": "栏目标题（如「申请人信息」「交易信息」「付款要素」）；表单栏目名固定，整行匹配"
+        },
+        {
+          "type": "regex",
+          "pattern": "^[一二三四五六七八九十]+、",
+          "notes": "一、 二、 等中文编号式栏目"
+        }
+      ]
+    },
+    "heading2": {
+      "match": [
+        {
+          "type": "regex",
+          "pattern": "^（[一二三四五六七八九十]+）",
+          "notes": "（一）（二）等小节编号"
+        }
+      ]
+    },
+    "heading3": {
+      "match": [
+        {
+          "type": "regex",
+          "pattern": "^\\d+[.、]",
+          "notes": "1. 2. 1、 等"
+        }
+      ]
+    },
+    "heading4": {
+      "match": [
+        {
+          "type": "regex",
+          "pattern": "^[（(]\\d+[）)]",
+          "notes": "（1）(1) 等"
+        }
+      ]
+    },
+    "body": {
+      "fallback": true,
+      "notes": "未被以上规则命中的普通段落一律视为正文（表单填写说明等）"
+    },
+    "caption": {
+      "match": [
+        {
+          "type": "regex",
+          "pattern": "^[表图]\\s*\\d+",
+          "notes": "表1 图2 等起始的段落"
+        }
+      ]
+    },
+    "table": {
+      "match": [
+        {
+          "type": "heuristic",
+          "kind": "isTableElement",
+          "notes": "OOXML 表格元素本身，无需文本规则；申报字段表（申报号码/金额币种/交易编码/交易附言等）主要载体"
+        }
+      ]
+    },
+    "attachment": {
+      "match": [
+        {
+          "type": "regex",
+          "pattern": "^(?:附件|附言)",
+          "notes": "「附件」「附言」起始的段落；交易附言是申报单固定字段，识别后按附件样式处理"
+        }
+      ]
+    }
+  }
+}

@@ -240,7 +240,8 @@ main {
 
 /* ---------- 页面线框 ---------- */
 
-.page-toolbar {
+.page-toolbar,
+.ruleset-toolbar {
   display: flex;
   align-items: center;
   gap: 24px;
