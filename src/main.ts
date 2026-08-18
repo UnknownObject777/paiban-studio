@@ -237,6 +237,7 @@ async function createWindow(): Promise<void> {
     minHeight: 600,
     backgroundColor: '#ffffff',
     title: '排版工作台 paiban-studio',
+    icon: join(ROOT, 'build', 'icon.png'),
     webPreferences: {
       preload: join(__dirname, 'preload.mjs'),
       contextIsolation: true,

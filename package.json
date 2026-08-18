@@ -38,6 +38,7 @@
       "dist/**",
       "public/**",
       "templates/**",
+      "build/icon.png",
       "package.json"
     ],
     "win": {
