@@ -7,12 +7,15 @@
 //   template_read  模板规则集 / 占位符 / 大纲读取
 //   ruleset_read   内置规则集（手写资产）列表 / 规则集命令读取（#29）
 //   version_store  版本列表 / 回滚
+//   amount_words   人民币金额大写换算（确定性纯函数，替代 LLM 心算）
 //
 // 参数 schema 用纯 JSON Schema 对象（与 typebox 产出的 TSchema 运行时同构）。
-// 所有写工具 executionMode: 'sequential'（R1：串行执行，防并发写同一文档）。
+// 所有写工具 executionMode: 'sequential'（R1：串行执行，防并发写同一文档）；
+// amount_words 虽是纯函数，为与其余工具保持一致同样标记 sequential。
 // 内置文件工具（read/bash/edit/write）不入白名单——agent 只能经这些工具改文档。
 
 import type { Workspace } from '../server/workspace.js';
+import { amountToWordsCn } from '../docgen/amountWords.js';
 
 /** 工具 schema（纯 JSON Schema 对象，SDK 运行时接受）。 */
 export interface AgentToolParameters {
@@ -228,6 +231,33 @@ export function createTools(workspace: Workspace): AgentTool[] {
           return jsonResult(workspace.rollback(params.docId, params.versionId));
         }
         return jsonResult({ error: `未知 action: ${params.action}` }, true);
+      },
+    },
+    {
+      name: 'amount_words',
+      label: 'Amount to Chinese Words',
+      description: '人民币金额大写换算（确定性）：金额 → 中文大写（如 12345.67 → 壹万贰仟叁佰肆拾伍元陆角柒分）。金额可含千分位逗号（"1,234.5"）、最多两位小数（超出四舍五入到分）；负数/超千亿级/格式非法返回错误。',
+      promptSnippet: 'Convert an amount to Chinese uppercase financial words',
+      promptGuidelines: [
+        '标书报价表、境外汇款申请书等含「金额（大写）」栏时，必须先调 amount_words 换算后填入，禁止心算。',
+      ],
+      parameters: {
+        type: 'object',
+        properties: {
+          amount: { type: 'string', description: '金额（可含千分位逗号，最多两位小数，如 "12345.67" / "1,234.5"）' },
+        },
+        required: ['amount'],
+      },
+      executionMode: 'sequential',
+      async execute(_id: string, params: Record<string, any>) {
+        const amount = String(params.amount ?? '').trim();
+        if (amount === '') return jsonResult({ error: 'amount 不能为空' }, true);
+        try {
+          const words = amountToWordsCn(amount);
+          return jsonResult({ amount, words });
+        } catch (err) {
+          return jsonResult({ error: (err as Error).message }, true);
+        }
       },
     },
   ];

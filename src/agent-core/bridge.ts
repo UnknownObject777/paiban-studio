@@ -1,7 +1,7 @@
 // agent-core/bridge.ts — pi agent 接入层（spec 模块 2，调研 #3 路径 1：SDK 主进程内嵌）。
 //
 // 职责：
-//   - createAgentSession() 内嵌，tools 白名单只放自研六工具（裁剪内置文件工具，防绕过编辑内核）
+//   - createAgentSession() 内嵌，tools 白名单只放自研七工具（裁剪内置文件工具，防绕过编辑内核）
 //   - LLM provider（R4）：Anthropic（apiKey 直连）/ OpenAI 兼容端点（models.json 声明，含
 //     DeepSeek/Kimi/Qwen/Ollama/vLLM/本地网关）；界面配置 > 环境变量 > 默认值
 //   - 事件流翻译为渲染层友好事件（text_delta / tool_start / tool_end / done / error）
@@ -20,7 +20,8 @@ const SYSTEM_PRIMER = `你是「排版工作台」的文档排版助手，专门
 2. 修改前先调用 doc_outline 获取段落路径，按路径精确寻址（/body/p[N]/r[M]）。
 3. 每次 doc_edit 成功后系统自动保存新版本；改坏了可用 version_store 回滚。
 4. 工具调用失败时阅读错误里的 suggestion 字段并自我修正后重试。
-5. 用户说"按实验报告排版"→ 用 ruleset_read 取内置规则集 lab-report-default；"按公文排版"→ gongwen-default；"按标书/投标文件排版"→ bid-default；"按外汇申报单/涉外收付款申报表单排版"→ fx-form-default；"按某个上传的模板排"→ template_read。取到 rulesetCommands 后原样传给 doc_edit。内置规则集是手写资产，优先于上传模板反推的规则集。
+5. 涉及「金额（大写）」栏（投标报价表、外汇申报单）时，必须先调用 amount_words 换算得到大写后填入，禁止心算大写。
+6. 用户说"按实验报告排版"→ 用 ruleset_read 取内置规则集 lab-report-default；"按公文排版"→ gongwen-default；"按标书/投标文件排版"→ bid-default；"按外汇申报单/涉外收付款申报表单排版"→ fx-form-default；"按某个上传的模板排"→ template_read。取到 rulesetCommands 后原样传给 doc_edit。内置规则集是手写资产，优先于上传模板反推的规则集。
 
 第二工作模式（写/生成/起草新文档）：
 1. 用户要"写/生成/起草"新文档（标书、实验报告、外汇申报单等）时：先用 markdown 起草内容，再调 doc_generate（rulesetId 用 ruleset_read 列出的内置规则集 id，如 bid-default / lab-report-default / fx-form-default / gongwen-default）；生成后用一两句话汇报 docId 与文档名；用户后续要改就走 doc_outline + doc_edit。
@@ -40,7 +41,7 @@ const SYSTEM_PRIMER = `你是「排版工作台」的文档排版助手，专门
 回复要求：简要说明做了什么修改、产生的新版本号；不要输出大段无关解释。`;
 
 /** agent 工具白名单：只放自研工具（裁剪内置文件工具，防绕过编辑内核）。 */
-export const TOOL_WHITELIST = ['doc_outline', 'doc_edit', 'doc_generate', 'template_read', 'ruleset_read', 'version_store'];
+export const TOOL_WHITELIST = ['doc_outline', 'doc_edit', 'doc_generate', 'template_read', 'ruleset_read', 'version_store', 'amount_words'];
 
 export interface AgentStatus {
   ready: boolean;
@@ -232,6 +233,7 @@ export function summarizeArgs(args: any): string {
     return `生成《${args.name || '新文档'}》（规则集 ${args.rulesetId ?? '?'}${mdLines ? `，markdown ${mdLines} 行` : ''}）`;
   }
   if (args.templateId) return args.templateId;
+  if (args.amount !== undefined) return `金额 ${args.amount}`;
   return Object.keys(args).join(', ');
 }
 
